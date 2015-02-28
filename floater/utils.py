@@ -10,8 +10,9 @@ def floats_to_tables(float_dir, output_fname,
                      float_dtype = np.dtype('>f4'),
                      use_memmap=True,
                      progress=False,
-		     blocksize_mb=64,
-                     max_write_blocks=4):
+		     write_blocksize_mb=64,
+                     read_blocksize_mb=64,
+                     max_write_blocks=np.inf):
     """Translate an MITgcm float output file into pytables HDF format."""
 
     myfiles = []
@@ -32,31 +33,38 @@ def floats_to_tables(float_dir, output_fname,
 
     # figure out the blocksize in floats based on 
     bytes_per_float = fltBufDim * float_dtype.itemsize
-    blocksize = blocksize_mb * 1e6 / bytes_per_float
-    print "Blocksize: %g floats" % blocksize
+    blocksize_write = int(write_blocksize_mb * 1e6 / bytes_per_float)
+    blocksize_read = int(read_blocksize_mb * 1e6 / bytes_per_float)
+    print "Write Blocksize: %g floats" % blocksize_write
+    print "Read Blocksize: %g floats" % blocksize_read
     count = 0
     nblocks = 0
 
+    # for reading data
+    #rec_dtype = np.dtype((float_dtype, fltBufDim))
+    rec_dtype = np.dtype([ (k, float_dtype) for k in flds ])    
+
     # lagrangian float
     class LFloat(tables.IsDescription):
-        npart   = tables.UInt16Col()   # float id number, starts at 1
-        time    = tables.Float32Col()  # time of the datapoint
-        x       = tables.Float32Col()  # x position
-        y       = tables.Float32Col()  # y position
-        z       = tables.Float32Col()  # z position
-        i       = tables.Float32Col()  # x index
-        j       = tables.Float32Col()  # x index
-        k       = tables.Float32Col()  # z index
+        #npart   = tables.UInt16Col(pos=1)   # float id number, starts at 1
+        npart   = tables.Float32Col(pos=1)   # float id number, starts at 1
+        time    = tables.Float32Col(pos=2)  # time of the datapoint
+        x       = tables.Float32Col(pos=3)  # x position
+        y       = tables.Float32Col(pos=4)  # y position
+        z       = tables.Float32Col(pos=5)  # z position
+        i       = tables.Float32Col(pos=6)  # x index
+        j       = tables.Float32Col(pos=7)  # x index
+        k       = tables.Float32Col(pos=8)  # z index
         if fltBufDim >= 8:
-            p   = tables.Float32Col()  # pressure
-            u   = tables.Float32Col()  # zonal velocity
-            v   = tables.Float32Col()  # meridional velocity
-            t   = tables.Float32Col()  # temperature
-            s   = tables.Float32Col()  # salinity
+            p   = tables.Float32Col(pos=9)  # pressure
+            u   = tables.Float32Col(pos=10)  # zonal velocity
+            v   = tables.Float32Col(pos=11)  # meridional velocity
+            t   = tables.Float32Col(pos=12)  # temperature
+            s   = tables.Float32Col(pos=13)  # salinity
         if fltBufDim >= 14:
-            vort= tables.Float32Col()  # vorticity
+            vort= tables.Float32Col(pos=14)  # vorticity
         # for keeping track of processor id
-        nproc = tables.Float32Col()
+        #nproc = tables.Float32Col(pos=fltBufDim+1)
         
     # set suffix    
     if output_fname[-3:] != '.h5':
@@ -71,6 +79,8 @@ def floats_to_tables(float_dir, output_fname,
     expectedrows = total_bytes / bytes_per_float
     print 'Expected Rows: %g' % expectedrows
 
+    count = 0
+
     #h5file = tables.openFile(output_fname,
     with tables.openFile(output_fname,
                     mode='w', title='MITgcm Float Data') as h5file:
@@ -83,38 +93,41 @@ def floats_to_tables(float_dir, output_fname,
             if not progress:
                 print input_fname
             fname = os.path.join(float_dir, input_fname)
-        
-            if use_memmap:
-                traj = np.memmap(fname, dtype=float_dtype, mode='r')
-            else:
-                traj = np.fromfile(fname, dtype=float_dtype)
-                         
-            Nrecs = traj.shape[0]/fltBufDim
-            traj.shape = (Nrecs, fltBufDim)
-        
-            lfloat = table.row
-            # skip first record
-            for n in xrange(1,Nrecs):
+            Nrecs_file = os.path.getsize(fname) / bytes_per_float - 1       
+ 
+            with open(fname, 'rb') as f:
+
+                header = np.fromfile(f, dtype=rec_dtype, count=1)
                 
-                status = 'Processing file %s (% 3d/% 3d): % 5.2f%%' % (
-                            input_fname, nproc+1, len(myfiles), 100*n/float(Nrecs))
-                if progress:
-                    sys.stdout.write("\r" + status)
-                    sys.stdout.flush()
-                
-                for nfld, k in enumerate(flds):
-                    lfloat[k] = traj[n,nfld]
-                # processor id
-                lfloat['nproc'] = nproc
-                lfloat.append()
-                count += 1
-                if count >= blocksize:
-                    print " flushing table"
-                    table.flush()
-                    count = 0
-                    nblocks += 1
-                    if nblocks >= max_write_blocks:
+                # loop and read data in blocks
+                nreadblock = 0
+                while True:
+
+                    traj = np.fromfile(f, dtype=rec_dtype, count=blocksize_read)
+                    Nrecs = len(traj)
+                    if Nrecs==0:
+                        # done reading
                         break
+                                        
+                    status = 'Processing file %s (% 3d/% 3d) block % 5d/% 5d' % (
+                                input_fname, nproc+1, len(myfiles),
+                                nreadblock, Nrecs_file/blocksize_read)
+                    if progress:
+                        sys.stdout.write("\r" + status)
+                        sys.stdout.flush()
+            
+                    # append the data as a block - will this work?
+                    table.append(traj)
+                    count += Nrecs
+                    nreadblock += 1
+
+                    if count >= blocksize_write:
+                        print " flushing table"
+                        table.flush()
+                        count = 0
+                        nblocks += 1
+                        if nblocks >= max_write_blocks:
+                            break
 
                 if nblocks >= max_write_blocks:
                     break
