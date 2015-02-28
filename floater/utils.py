@@ -40,14 +40,10 @@ def floats_to_tables(float_dir, output_fname,
     count = 0
     nblocks = 0
 
-    # for reading data
-    #rec_dtype = np.dtype((float_dtype, fltBufDim))
-    rec_dtype = np.dtype([ (k, float_dtype) for k in flds ])    
-
     # lagrangian float
     class LFloat(tables.IsDescription):
-        #npart   = tables.UInt16Col(pos=1)   # float id number, starts at 1
-        npart   = tables.Float32Col(pos=1)   # float id number, starts at 1
+        npart   = tables.UInt16Col(pos=1)   # float id number, starts at 1
+        #npart   = tables.Float32Col(pos=1)   # float id number, starts at 1
         time    = tables.Float32Col(pos=2)  # time of the datapoint
         x       = tables.Float32Col(pos=3)  # x position
         y       = tables.Float32Col(pos=4)  # y position
@@ -66,6 +62,13 @@ def floats_to_tables(float_dir, output_fname,
         # for keeping track of processor id
         #nproc = tables.Float32Col(pos=fltBufDim+1)
         
+    # for reading data
+    #rec_dtype = np.dtype((float_dtype, fltBufDim))
+    rec_dtype = np.dtype([ (k, float_dtype) for k in flds ])    
+
+    # need to convert to this for writing data
+    new_dtype = tables.description.dtype_from_descr(LFloat)
+
     # set suffix    
     if output_fname[-3:] != '.h5':
         output_fname += '.h5'
@@ -117,7 +120,7 @@ def floats_to_tables(float_dir, output_fname,
                         sys.stdout.flush()
             
                     # append the data as a block - will this work?
-                    table.append(traj)
+                    table.append(traj.astype(new_dtype))
                     count += Nrecs
                     nreadblock += 1
 
