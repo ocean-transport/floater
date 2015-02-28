@@ -14,7 +14,7 @@ setup(name='floater',
       packages=['floater'],
       scripts=['scripts/floats_to_tables'],
       install_requires=[
-          'pytables', 'numpy'
+          'tables', 'numpy'
       ],
       test_suite = 'nose.collector',
       zip_safe=False)

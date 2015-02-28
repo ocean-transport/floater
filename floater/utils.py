@@ -1,8 +1,5 @@
 import numpy as np
-# this is PyTables 2.4.0
 import tables
-# 3.0 versions change the function naming conventions
-# http://pytables.github.io/MIGRATING_TO_3.x.html
 import os
 import fnmatch
 import sys
@@ -12,7 +9,9 @@ def floats_to_tables(float_dir, output_fname,
                      fltBufDim = 14,
                      float_dtype = np.dtype('>f4'),
                      use_memmap=True,
-                     quiet=False):
+                     progress=False,
+		     blocksize_mb=64,
+                     max_write_blocks=4):
     """Translate an MITgcm float output file into pytables HDF format."""
 
     myfiles = []
@@ -30,6 +29,13 @@ def floats_to_tables(float_dir, output_fname,
         flds += ['p', 'u', 'v', 't', 's']
     if fltBufDim >= 14:
         flds += ['vort']
+
+    # figure out the blocksize in floats based on 
+    bytes_per_float = fltBufDim * float_dtype.itemsize
+    blocksize = blocksize_mb * 1e6 / bytes_per_float
+    print "Blocksize: %g floats" % blocksize
+    count = 0
+    nblocks = 0
 
     # lagrangian float
     class LFloat(tables.IsDescription):
@@ -55,15 +61,27 @@ def floats_to_tables(float_dir, output_fname,
     # set suffix    
     if output_fname[-3:] != '.h5':
         output_fname += '.h5'
-    
+   
+    # need to figure out the number of expected rows
+    # do this by looking at the size of files 
+    total_bytes = 0
+    for fname in [os.path.join(float_dir, fn) for fn in myfiles]:
+        # size in bytes
+        total_bytes += os.path.getsize(fname)
+    expectedrows = total_bytes / bytes_per_float
+    print 'Expected Rows: %g' % expectedrows
+
     #h5file = tables.openFile(output_fname,
     with tables.openFile(output_fname,
                     mode='w', title='MITgcm Float Data') as h5file:
         group = h5file.createGroup("/", 'floats', 'Float Data')
-        table = h5file.createTable(group, 'trajectories', LFloat, "Float Trajectories")
+        table = h5file.createTable(group, 'trajectories', LFloat, "Float Trajectories",
+                                    expectedrows=expectedrows)
             
         for nproc, input_fname in enumerate(myfiles):
         
+            if not progress:
+                print input_fname
             fname = os.path.join(float_dir, input_fname)
         
             if use_memmap:
@@ -76,11 +94,11 @@ def floats_to_tables(float_dir, output_fname,
         
             lfloat = table.row
             # skip first record
-            for n in range(1,Nrecs):
+            for n in xrange(1,Nrecs):
                 
                 status = 'Processing file %s (% 3d/% 3d): % 5.2f%%' % (
                             input_fname, nproc+1, len(myfiles), 100*n/float(Nrecs))
-                if not quiet:
+                if progress:
                     sys.stdout.write("\r" + status)
                     sys.stdout.flush()
                 
@@ -89,10 +107,21 @@ def floats_to_tables(float_dir, output_fname,
                 # processor id
                 lfloat['nproc'] = nproc
                 lfloat.append()
+                count += 1
+                if count >= blocksize:
+                    print " flushing table"
+                    table.flush()
+                    count = 0
+                    nblocks += 1
+                    if nblocks >= max_write_blocks:
+                        break
 
+                if nblocks >= max_write_blocks:
+                    break
+
+        table.flush() 
         table.cols.npart.createIndex()
         table.cols.time.createIndex()
         table.flush()
-    #h5file.close()
 
     
