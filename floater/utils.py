@@ -42,7 +42,7 @@ def floats_to_tables(float_dir, output_fname,
 
     # lagrangian float
     class LFloat(tables.IsDescription):
-        npart   = tables.UInt16Col(pos=1)   # float id number, starts at 1
+        npart   = tables.Int32Col(pos=1)   # float id number, starts at 1
         #npart   = tables.Float32Col(pos=1)   # float id number, starts at 1
         time    = tables.Float32Col(pos=2)  # time of the datapoint
         x       = tables.Float32Col(pos=3)  # x position
