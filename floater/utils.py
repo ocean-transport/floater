@@ -5,6 +5,11 @@ import fnmatch
 import sys
 from . import input
 
+def _maybe_add_h5_suffix(fname):
+    if fname[-3:] != '.h5':
+        fname += '.h5'
+    return fname
+
 def floats_to_tables(float_dir, output_fname,
                      float_file_prefix='float_trajectories',
                      fltBufDim = 14,
@@ -69,8 +74,7 @@ def floats_to_tables(float_dir, output_fname,
     new_dtype = tables.description.dtype_from_descr(LFloat)
 
     # set suffix
-    if output_fname[-3:] != '.h5':
-        output_fname += '.h5'
+    output_fname = _maybe_add_h5_suffix(output_fname)
 
     # need to figure out the number of expected rows
     # do this by looking at the size of files
@@ -149,7 +153,31 @@ def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
         Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
     """
     import bcolz
-    mfd = input.MITgcmFloatData(input_dir)
+    mfd = input.MITgcmFloatData(input_dir, **kwargs)
     ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.rec_dtype, count=mfd.nrecs,
             mode='w', rootdir=output_dir)
     return ct
+
+def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
+    """Convert MITgcm float data to pands hdf format.
+
+    Paramters
+    ---------
+    input_dir : path
+        Where to find the MITgcm output data
+    output_fname : path
+        Filename of the hdf data store
+    kwargs :
+        Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
+    """
+    import pandas as pd
+    output_fname = _maybe_add_h5_suffix(output_fname)
+    key = '/floats/trajectories'
+
+    store = pd.HDFStore(output_fname, mode='w')
+    #with pd.HDFStore(output_fname, mode='w') as store:
+    mfd = input.MITgcmFloatData(input_dir, **kwargs)
+    for block in mfd.generator(progress=progress, return_full_block=True):
+        df = pd.DataFrame.from_records(block)
+        store.append(key, df)
+    store.close()

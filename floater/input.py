@@ -52,7 +52,9 @@ class MITgcmFloatData(object):
         # need to decide whether it makes sense to recast
         self.rec_dtype = np.dtype([ (k, self._dtype) for k in self.fields ])
 
-    def generator(self, read_blocksize_mb=64, progress=True):
+    def generator(self, read_blocksize_mb=64, return_full_block=False,
+                    progress=True
+            ):
         """Returns a generator which will loop through every record in the
         dataset.
 
@@ -60,6 +62,11 @@ class MITgcmFloatData(object):
         ----------
         read_blocksize_mb : int
             The number of mb to read in at a time
+        return_full_block : bool
+            If ``True``, returns the whole block on each yield. Otherwise one
+            record at a time
+        progress : bool
+            Report on progress to stdout
         """
 
         blocksize_read = int(read_blocksize_mb * 1e6 / self._bytes_per_float)
@@ -83,8 +90,11 @@ class MITgcmFloatData(object):
                                 n, nrecs_file/float(blocksize_read))
                         sys.stdout.write("\r" + status)
                         sys.stdout.flush()
-                    for rec in traj:
-                        yield rec
+                    if return_full_block:
+                        yield traj
+                    else:
+                        for rec in traj:
+                            yield rec
 
 
     def _nrecs_in_file(self, fname):
