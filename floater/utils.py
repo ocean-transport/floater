@@ -3,6 +3,7 @@ import tables
 import os
 import fnmatch
 import sys
+from . import input
 
 def floats_to_tables(float_dir, output_fname,
                      float_file_prefix='float_trajectories',
@@ -10,7 +11,7 @@ def floats_to_tables(float_dir, output_fname,
                      float_dtype = np.dtype('>f4'),
                      use_memmap=True,
                      progress=False,
-		     write_blocksize_mb=64,
+		             write_blocksize_mb=64,
                      read_blocksize_mb=64,
                      max_write_blocks=np.inf):
     """Translate an MITgcm float output file into pytables HDF format."""
@@ -31,12 +32,10 @@ def floats_to_tables(float_dir, output_fname,
     if fltBufDim >= 14:
         flds += ['vort']
 
-    # figure out the blocksize in floats based on 
+    # figure out the blocksize in floats based on
     bytes_per_float = fltBufDim * float_dtype.itemsize
     blocksize_write = int(write_blocksize_mb * 1e6 / bytes_per_float)
     blocksize_read = int(read_blocksize_mb * 1e6 / bytes_per_float)
-    print "Write Blocksize: %g floats" % blocksize_write
-    print "Read Blocksize: %g floats" % blocksize_read
     count = 0
     nblocks = 0
 
@@ -61,26 +60,25 @@ def floats_to_tables(float_dir, output_fname,
             vort= tables.Float32Col(pos=14)  # vorticity
         # for keeping track of processor id
         #nproc = tables.Float32Col(pos=fltBufDim+1)
-        
+
     # for reading data
     #rec_dtype = np.dtype((float_dtype, fltBufDim))
-    rec_dtype = np.dtype([ (k, float_dtype) for k in flds ])    
+    rec_dtype = np.dtype([ (k, float_dtype) for k in flds ])
 
     # need to convert to this for writing data
     new_dtype = tables.description.dtype_from_descr(LFloat)
 
-    # set suffix    
+    # set suffix
     if output_fname[-3:] != '.h5':
         output_fname += '.h5'
-   
+
     # need to figure out the number of expected rows
-    # do this by looking at the size of files 
+    # do this by looking at the size of files
     total_bytes = 0
     for fname in [os.path.join(float_dir, fn) for fn in myfiles]:
         # size in bytes
         total_bytes += os.path.getsize(fname)
     expectedrows = total_bytes / bytes_per_float
-    print 'Expected Rows: %g' % expectedrows
 
     count = 0
 
@@ -90,18 +88,16 @@ def floats_to_tables(float_dir, output_fname,
         group = h5file.createGroup("/", 'floats', 'Float Data')
         table = h5file.createTable(group, 'trajectories', LFloat, "Float Trajectories",
                                     expectedrows=expectedrows)
-            
+
         for nproc, input_fname in enumerate(myfiles):
-        
-            if not progress:
-                print input_fname
+
             fname = os.path.join(float_dir, input_fname)
-            Nrecs_file = os.path.getsize(fname) / bytes_per_float - 1       
- 
+            Nrecs_file = os.path.getsize(fname) / bytes_per_float - 1
+
             with open(fname, 'rb') as f:
 
                 header = np.fromfile(f, dtype=rec_dtype, count=1)
-                
+
                 # loop and read data in blocks
                 nreadblock = 0
                 while True:
@@ -111,21 +107,20 @@ def floats_to_tables(float_dir, output_fname,
                     if Nrecs==0:
                         # done reading
                         break
-                                        
+
                     status = 'Processing file %s (% 3d/% 3d) block % 5d/% 5d' % (
                                 input_fname, nproc+1, len(myfiles),
                                 nreadblock, Nrecs_file/blocksize_read)
                     if progress:
                         sys.stdout.write("\r" + status)
                         sys.stdout.flush()
-            
+
                     # append the data as a block - will this work?
                     table.append(traj.astype(new_dtype))
                     count += Nrecs
                     nreadblock += 1
 
                     if count >= blocksize_write:
-                        print " flushing table"
                         table.flush()
                         count = 0
                         nblocks += 1
@@ -135,9 +130,26 @@ def floats_to_tables(float_dir, output_fname,
                 if nblocks >= max_write_blocks:
                     break
 
-        table.flush() 
+        table.flush()
         table.cols.npart.createIndex()
         table.cols.time.createIndex()
         table.flush()
 
-    
+
+def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
+    """Convert MITgcm float data to bcolz format.
+
+    Paramters
+    ---------
+    input_dir : path
+        Where to find the MITgcm output data
+    output_dir : path
+        Where to but the bcolz data store (equivalent to bcolz rootdir)
+    kwargs :
+        Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
+    """
+    import bcolz
+    mfd = input.MITgcmFloatData(input_dir)
+    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.rec_dtype, count=mfd.nrecs,
+            mode='w', rootdir=output_dir)
+    return ct

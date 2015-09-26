@@ -12,7 +12,7 @@ setup(name='floater',
       author_email='rpa@ldeo.columbia.edu',
       license='MIT',
       packages=['floater'],
-      scripts=['scripts/floats_to_tables'],
+      scripts=['scripts/floater_convert'],
       install_requires=[
           'tables', 'numpy'
       ],

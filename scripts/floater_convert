@@ -1,0 +1,40 @@
+#!/usr/bin/env python -u
+
+import argparse
+from floater import utils
+
+parser = argparse.ArgumentParser(
+        description='Translate MITgcm mds float output files into other formats.')
+
+parser.add_argument('--float_file_prefix', default='float_trajectories',
+                    metavar='PREFIX',
+                    help='prefix of MITgcm output files (e.g. float_trajectories.001.001.data)')
+parser.add_argument('--float_buf_dim', default=14, metavar='N',
+                    help='number of items in each trajectory record')
+
+parser.add_argument('--progress', dest='progress', action='store_true')
+parser.set_defaults(progress=False)
+
+parser.add_argument('--input_dir', default='./', metavar='DIR',
+                   help='directory in which to find the MITgcm float data')
+
+parser.add_argument('--output_format', choices=['pytables','bcolz'],
+                    default='pytables', metavar='FMT',
+                    help="output format of conversion")
+
+parser.add_argument('output_file',
+                   help='the output filename')
+
+
+args = parser.parse_args()
+
+if args.output_format=='pytables':
+    utils.floats_to_tables(args.input_dir, args.output_file,
+                        float_file_prefix=args.float_file_prefix,
+                        fltBufDim=args.float_buf_dim,
+			            progress=args.progress)
+elif args.output_format=='bcolz':
+    utils.floats_to_bcolz(args.input_dir, args.output_file,
+                        file_prefix=args.float_file_prefix,
+                        buf_dim=args.float_buf_dim,
+			            progress=args.progress)

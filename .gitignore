@@ -5,3 +5,4 @@
 .installed.cfg
 pop-log.txt
 nosetests.xml
+testdata/*
