@@ -174,10 +174,10 @@ def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
     output_fname = _maybe_add_h5_suffix(output_fname)
     key = '/floats/trajectories'
 
-    store = pd.HDFStore(output_fname, mode='w')
-    #with pd.HDFStore(output_fname, mode='w') as store:
-    mfd = input.MITgcmFloatData(input_dir, **kwargs)
-    for block in mfd.generator(progress=progress, return_full_block=True):
-        df = pd.DataFrame.from_records(block)
-        store.append(key, df)
-    store.close()
+    #store = pd.HDFStore(output_fname, mode='w')
+    with pd.HDFStore(output_fname, mode='w') as store:
+        mfd = input.MITgcmFloatData(input_dir, **kwargs)
+        for block in mfd.generator(progress=progress, return_full_block=True):
+            df = pd.DataFrame.from_records(block)
+            store.append(key, df)
+    #store.close()
