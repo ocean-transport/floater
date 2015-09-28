@@ -38,3 +38,8 @@ elif args.output_format=='bcolz':
                         file_prefix=args.float_file_prefix,
                         buf_dim=args.float_buf_dim,
 			            progress=args.progress)
+elif args.output_format=='pandas':
+    utils.floats_to_pandas(args.input_dir, args.output_file,
+                        file_prefix=args.float_file_prefix,
+                        buf_dim=args.float_buf_dim,
+			            progress=args.progress)
