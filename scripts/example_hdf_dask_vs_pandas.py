@@ -5,8 +5,8 @@ import numpy as np
 fname = 'testfile.h5'
 key = '/group/dataset'
 
-dtype = np.dtype([('idx','i4'),('val','f8')])
-N = 1000000
+dtype = np.dtype([('idx','i4'),('val_a','f8'),('val_b','f8')])
+N = 10000000
 #store = pd.HDFStore(output_fname, mode='w')
 with pd.HDFStore(fname, mode='w') as store:
     recarray = np.empty(N, dtype)
