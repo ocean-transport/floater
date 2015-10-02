@@ -1,0 +1,197 @@
+#cython: profile=True
+#cython: boundscheck=False
+#cython: wraparound=False
+#cython: nonecheck=False
+#from __future__ import division
+import numpy as np
+import cython
+cimport numpy as np
+from libc.stdlib cimport malloc, free
+from cython.parallel import prange, threadid
+
+# integer indices
+DTYPE_int = np.int32
+ctypedef np.int32_t DTYPE_int_t
+# array values
+DTYPE_flt = np.float64
+ctypedef np.float64_t DTYPE_flt_t
+
+# what type should things be?
+# http://stackoverflow.com/questions/18462785/what-is-the-recommended-way-of-allocating-memory-for-a-typed-memory-view
+# answer: malloc
+
+# special value for border points
+cdef DTYPE_int_t INT_NOT_FOUND = -9999
+
+cdef class HexArray:
+    # array shape
+    cdef readonly DTYPE_int_t Nx, Ny, N
+    cdef readonly bint index_right
+    # array data
+
+    def __init__(self, nx, ny, idx_right=1):
+        """Initialize new hex array of a given shape."""
+
+        self.Nx = nx
+        self.Ny = ny
+        self.N = nx*ny
+        self.index_right = idx_right
+
+    # this function sucks because it uses a python type (tuple)
+    # and thus can't release the gil
+    # using a c data structure (e.g. struct) would overcome gil limitation
+    cdef tuple ji_from_n(self, DTYPE_int_t n):
+        cdef DTYPE_int_t j, i
+        cdef tuple coord
+        j = n / self.Nx
+        i = n % self.Nx
+        coord = (j, i)
+        return coord
+
+    cdef DTYPE_int_t n_from_ji(self, DTYPE_int_t j, DTYPE_int_t i) nogil:
+        cdef DTYPE_int_t n
+        n = i + j*self.Nx
+        return n
+
+    cdef bint is_border_n(self, DTYPE_int_t n) nogil:
+        cdef DTYPE_int_t j, i
+        j = n / self.Nx
+        i = n % self.Nx
+        return self.is_border_ji(j, i)
+
+    cdef bint is_border_ji(self, DTYPE_int_t j, DTYPE_int_t i) nogil:
+        return (i==0) or (i==self.Nx-1) or (j==0) or (j==self.Ny-1)
+
+    cdef int*  _neighbors(self, DTYPE_int_t n) nogil:
+        """Given index i, return neighbor indices."""
+
+        cdef DTYPE_int_t j, i
+        cdef bint evenrow
+        # an array to keep track of the neighbor indices
+        #cdef DTYPE_int[:] nbr = np.empty(6, np.int32)
+
+        # c array
+        #cdef int carr[6]
+        # memory view on c array
+        #cdef DTYPE_int_t [:] nbr
+
+        cdef int* nbr
+        nbr = <int*> malloc(sizeof(int) * 6)
+        nbr[0] = INT_NOT_FOUND
+
+        #with gil:
+        #    nbr = np.full(6, INT_NOT_FOUND, DTYPE_int)
+
+        #j, i = self.ji_from_n(n)
+        j = n / self.Nx
+        i = n % self.Nx
+        evenrow = j % 2
+
+        # don't even bother with border points
+        if self.is_border_ji(j, i):
+            return nbr
+
+        if not evenrow:
+            nbr[0] = self.n_from_ji(j-1, i)
+            nbr[1] = self.n_from_ji(j-1, i+1)
+            nbr[2] = self.n_from_ji(j, i+1)
+            nbr[3] = self.n_from_ji(j+1, i+1)
+            nbr[4] = self.n_from_ji(j+1, i)
+            nbr[5] = self.n_from_ji(j, i-1)
+        else:
+            nbr[0] = self.n_from_ji(j-1, i-1)
+            nbr[1] = self.n_from_ji(j-1, i)
+            nbr[2] = self.n_from_ji(j, i+1)
+            nbr[3] = self.n_from_ji(j+1, i)
+            nbr[4] = self.n_from_ji(j+1, i-1)
+            nbr[5] = self.n_from_ji(j, i-1)
+
+        return nbr
+
+    def neighbors(self, n):
+        #cdef int [:] nbr = self._neighbors(n)
+        cdef int * nptr = self._neighbors(n)
+        cdef int [:] nbr = <int[:6]> nptr
+        free(nptr)
+        if nbr[0] == INT_NOT_FOUND:
+            return np.array([], DTYPE_int)
+        else:
+            return np.asarray(nbr)
+
+    def classify_critical_points(self, np.ndarray[DTYPE_flt_t, ndim=2] a):
+        """Identify and classify the critical points of array ``a``.
+        0: regular point
+        +1: maximum
+        -1: minimum
+        +2: saddle point
+        -2: zero gradient detected
+        -3: monkey point
+
+        PARAMETERS
+        ----------
+        a : arraylike
+            two-dimensional hexagonally tessalted field, dtype=float64, shape=2
+
+        RETURNS
+        -------
+        c : arraylike
+            array with the same shape as a, with critical points marked
+        """
+
+        # a raveled view
+        cdef DTYPE_flt_t [:] ar
+        ar = a.ravel()
+        cdef DTYPE_int_t [:] c
+        c = np.zeros(self.N, DTYPE_int)
+
+        # loop indices
+        cdef int n, k, kprev
+        # neighbor pointer
+        cdef int* nbr
+        # raw difference
+        cdef DTYPE_flt_t diff
+        # sign of differences
+        cdef DTYPE_int_t [:] sign_diff = np.zeros(6, DTYPE_int)
+        cdef DTYPE_int_t sum_sign_diff
+
+        for n in range(self.N):
+            if not self.is_border_n(n):
+                nbr = self._neighbors(n)
+                # fill in the differnces
+                for k in range(6):
+                    diff = ar[n] - ar[nbr[k]]
+                    if diff==0.0:
+                        sign_diff[k] = 0
+                    elif diff>0:
+                        sign_diff[k] = 1
+                    else:
+                        sign_diff[k] = -1
+
+                # loop through again and check signs
+                sum_sign_diff = 0
+                for k in range(6):
+                    # check for zero gradient
+                    if sign_diff[k]==0:
+                        sum_sign_diff = -2
+                        break
+                    kprev = (k-1) % 6
+                    sum_sign_diff += (sign_diff[k] != sign_diff[kprev])
+                if sum_sign_diff==0:
+                    # extremum
+                    c[n] = -sign_diff[0]
+                elif sum_sign_diff==2:
+                    # regular point
+                    #c[n] = 0 # already should be zero
+                    pass
+                elif sum_sign_diff==-2:
+                    # zero gradient point
+                    c[n] = -2
+                elif sum_sign_diff==4:
+                    # saddle
+                    c[n] = 2
+                else:
+                    c[n] = -3
+                # overwrite for debugging
+                #c[n] = sum_sign_diff
+        free(nbr)
+        return c
