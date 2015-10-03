@@ -63,26 +63,25 @@ cdef class HexArray:
         return (i==0) or (i==self.Nx-1) or (j==0) or (j==self.Ny-1)
 
     cdef int*  _neighbors(self, DTYPE_int_t n) nogil:
-        """Given index i, return neighbor indices."""
+        """Given index n, return neighbor indices.
+
+        PARAMETERS
+        ----------
+        n : int
+            1D index of point
+
+        RETURNS
+        -------
+        nbr : int*
+            pointer to array of 6 neighbor indices. Must be freed manually?
+        """
 
         cdef DTYPE_int_t j, i
         cdef bint evenrow
-        # an array to keep track of the neighbor indices
-        #cdef DTYPE_int[:] nbr = np.empty(6, np.int32)
-
-        # c array
-        #cdef int carr[6]
-        # memory view on c array
-        #cdef DTYPE_int_t [:] nbr
-
         cdef int* nbr
         nbr = <int*> malloc(sizeof(int) * 6)
         nbr[0] = INT_NOT_FOUND
 
-        #with gil:
-        #    nbr = np.full(6, INT_NOT_FOUND, DTYPE_int)
-
-        #j, i = self.ji_from_n(n)
         j = n / self.Nx
         i = n % self.Nx
         evenrow = j % 2
@@ -109,14 +108,28 @@ cdef class HexArray:
         return nbr
 
     def neighbors(self, n):
-        #cdef int [:] nbr = self._neighbors(n)
+        """Given index n, return neighbor indices.
+
+        PARAMETERS
+        ----------
+        n : int
+            1D index of point
+
+        RETURNS
+        -------
+        nbr : arraylike
+            Numpy ndarray of neighbor points
+        """
         cdef int * nptr = self._neighbors(n)
-        cdef int [:] nbr = <int[:6]> nptr
-        free(nptr)
-        if nbr[0] == INT_NOT_FOUND:
+        cdef int [:] nbr
+        if nptr[0] == INT_NOT_FOUND:
+            free(nptr)
             return np.array([], DTYPE_int)
         else:
-            return np.asarray(nbr)
+            nbr = <int[:6]> nptr
+            numpy_array = np.asarray(nbr.copy())
+            free(nptr)
+            return numpy_array
 
     def classify_critical_points(self, np.ndarray[DTYPE_flt_t, ndim=2] a):
         """Identify and classify the critical points of array ``a``.
@@ -137,6 +150,10 @@ cdef class HexArray:
         c : arraylike
             array with the same shape as a, with critical points marked
         """
+
+        # make sure array is correct size
+        if (a.shape[0] != self.Ny) or (a.shape[1] != self.Nx):
+            raise ValueError('array a is the wrong shape')
 
         # a raveled view
         cdef DTYPE_flt_t [:] ar
@@ -178,7 +195,7 @@ cdef class HexArray:
                     sum_sign_diff += (sign_diff[k] != sign_diff[kprev])
                 if sum_sign_diff==0:
                     # extremum
-                    c[n] = -sign_diff[0]
+                    c[n] = sign_diff[0]
                 elif sum_sign_diff==2:
                     # regular point
                     #c[n] = 0 # already should be zero
@@ -193,5 +210,6 @@ cdef class HexArray:
                     c[n] = -3
                 # overwrite for debugging
                 #c[n] = sum_sign_diff
-        free(nbr)
-        return c
+                free(nbr)
+        res = np.asarray(c).reshape(self.Ny, self.Nx)
+        return res
