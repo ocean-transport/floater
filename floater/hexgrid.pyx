@@ -7,7 +7,9 @@ import numpy as np
 import cython
 cimport numpy as np
 from libc.stdlib cimport malloc, free
-from cython.parallel import prange, threadid
+from libcpp.unordered_set cimport unordered_set
+from cython.parallel cimport prange, threadid
+
 
 # integer indices
 DTYPE_int = np.int32
@@ -213,3 +215,56 @@ cdef class HexArray:
                 free(nbr)
         res = np.asarray(c).reshape(self.Ny, self.Nx)
         return res
+
+    cpdef np.ndarray[int, ndim=1] maxima(
+              self, np.ndarray[DTYPE_flt_t, ndim=2] a):
+        cpoints = self.classify_critical_points(a)
+        return np.nonzero(cpoints.ravel()==1)[0]
+
+cdef class HexArrayRegion:
+
+    # the parent region
+    cdef HexArray ha
+    # the points in the region
+    cdef unordered_set[int] members
+
+    def __cinit__(self, HexArray ha):
+        self.ha = ha
+        #self.members = new unordered_set(x0, y0, x1, y1)
+
+    #def __dealloc__(self):
+        #del self.thisptr
+
+    cdef void add_point(self, int pt) nogil:
+        self.members.insert(pt)
+
+    cdef unordered_set[int] get_boundary(self) nogil:
+        cdef unordered_set[int] boundary
+        cdef int n, k
+        cdef int* nbr
+        cdef int npt
+        cdef size_t cnt
+        for n in self.members:
+            nbr = self.ha._neighbors(n)
+            if not nbr[0] == INT_NOT_FOUND:
+                for k in range(6):
+                    cnt = self.members.count(nbr[k])
+                    if cnt==0:
+                        boundary.insert(nbr[k])
+            free(nbr)
+        return boundary
+
+def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
+    """Find convex regions around the extrema of ``a``.
+
+    PARAMETERS
+    ----------
+    a : arraylike
+        The 2D field in which to search for convex regions. Must be dtype=f64.
+    minsize : int
+        The minimum size of regions to return (number of points)
+
+    RETURNS
+    -------
+    regions : list of HexArrayRegion elements
+    """

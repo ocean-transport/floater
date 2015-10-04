@@ -9,9 +9,9 @@ def readme():
     with open('README.md') as f:
         return f.read()
 
-extra_compile_args = []
-extra_link_args = []
-
+extra_compile_args = ["-std=c++11"]
+extra_link_args = ["-std=c++11"]
+runtime_library_dirs = ['/usr/local/gcc-4.8/lib']
 
 # check for openmp following
 # http://stackoverflow.com/questions/16549893/programatically-testing-for-openmp-support-from-a-python-setup-script
@@ -57,8 +57,10 @@ else:
 ext_module = Extension(
     "floater.hexgrid",
     ["floater/hexgrid.pyx"],
+    language="c++",
     extra_compile_args=extra_compile_args,
     extra_link_args=extra_link_args,
+    runtime_library_dirs=runtime_library_dirs
 )
 
 setup(name='floater',

@@ -30,3 +30,12 @@ class HexArraylTester(unittest.TestCase):
         self.assertSequenceEqual(a.shape, c.shape)
         # c should actually come out the same as a
         np.testing.assert_array_equal(a.astype('i4'), c)
+
+    def test_maxima(self):
+        a = np.array([[0,0,0],
+                      [0,1,0],
+                      [0,0,0]], np.float64)
+        ha = hexgrid.HexArray(*a.shape)
+        maxima = ha.maxima(a)
+        self.assertEqual(len(maxima), 1)
+        self.assertEqual(maxima[0], 4)
