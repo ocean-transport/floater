@@ -6,3 +6,5 @@
 pop-log.txt
 nosetests.xml
 testdata/*
+floater/*.so
+floater/*.c

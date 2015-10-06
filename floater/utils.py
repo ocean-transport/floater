@@ -4,9 +4,10 @@ import fnmatch
 import sys
 from . import input
 
-def _maybe_add_h5_suffix(fname):
-    if fname[-3:] != '.h5':
-        fname += '.h5'
+def _maybe_add_suffix(fname, suf):
+    lsuf = len(suf)
+    if fname[-lsuf:] != suf:
+        fname += suf
     return fname
 
 def floats_to_tables(float_dir, output_fname,
@@ -74,7 +75,7 @@ def floats_to_tables(float_dir, output_fname,
     new_dtype = tables.description.dtype_from_descr(LFloat)
 
     # set suffix
-    output_fname = _maybe_add_h5_suffix(output_fname)
+    output_fname = _maybe_add_suffix(output_fname, 'h5')
 
     # need to figure out the number of expected rows
     # do this by looking at the size of files
@@ -153,9 +154,10 @@ def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
         Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
     """
     import bcolz
+    output_dir = _maybe_add_suffix(output_dir, '.bcolz')
     mfd = input.MITgcmFloatData(input_dir, **kwargs)
-    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.rec_dtype, count=mfd.nrecs,
-            mode='w', rootdir=output_dir)
+    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.out_dtype,
+            count=mfd.nrecs, mode='w', rootdir=output_dir)
     return ct
 
 def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
@@ -171,13 +173,36 @@ def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
         Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
     """
     import pandas as pd
-    output_fname = _maybe_add_h5_suffix(output_fname)
+    output_fname = _maybe_add_suffix(output_fname, '.h5')
     key = '/floats/trajectories'
 
-    #store = pd.HDFStore(output_fname, mode='w')
     with pd.HDFStore(output_fname, mode='w') as store:
         mfd = input.MITgcmFloatData(input_dir, **kwargs)
         for block in mfd.generator(progress=progress, return_full_block=True):
             df = pd.DataFrame.from_records(block)
             store.append(key, df)
-    #store.close()
+
+def floats_to_castra(input_dir, output_fname, progress=False, **kwargs):
+    """Convert MITgcm float data to pands hdf format.
+
+    Paramters
+    ---------
+    input_dir : path
+        Where to find the MITgcm output data
+    output_fname : path
+        Filename of the hdf data store
+    kwargs :
+        Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
+    """
+    import pandas as pd
+    from castra import Castra
+
+    output_fname = _maybe_add_suffix(output_fname, '.castra')
+
+    mfd = input.MITgcmFloatData(input_dir, **kwargs)
+    c = None
+    for block in mfd.generator(progress=progress, return_full_block=True):
+        df = pd.DataFrame.from_records(block)
+        if not c:
+            c = Castra(output_fname, template=df)
+        c.extend(df)

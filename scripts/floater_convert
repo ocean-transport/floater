@@ -20,26 +20,37 @@ parser.add_argument('--input_dir', default='./', metavar='DIR',
 
 parser.add_argument('--output_format', choices=['pytables','bcolz','pandas'],
                     default='pytables', metavar='FMT',
-                    help="output format of conversion")
+                    help="output format of conversion "
+                         "('pytables', 'bcolz', or 'pandas')")
+
+parser.add_argument('--keep_fields', type=str,
+                    default='', metavar='FIELDS',
+                    help="comma-dilimited list of data fields to retain")
 
 parser.add_argument('output_file',
                    help='the output filename')
 
-
 args = parser.parse_args()
+
+keep_fields = [str(item) for item in args.keep_fields.split(',')]
+if len(keep_fields) == 0:
+    keep_fields = None
 
 if args.output_format=='pytables':
     utils.floats_to_tables(args.input_dir, args.output_file,
                         float_file_prefix=args.float_file_prefix,
                         fltBufDim=args.float_buf_dim,
-			            progress=args.progress)
+			            progress=args.progress,
+                        keep_fields=keep_fields)
 elif args.output_format=='bcolz':
     utils.floats_to_bcolz(args.input_dir, args.output_file,
                         file_prefix=args.float_file_prefix,
                         buf_dim=args.float_buf_dim,
-			            progress=args.progress)
+			            progress=args.progress,
+                        keep_fields=keep_fields)
 elif args.output_format=='pandas':
     utils.floats_to_pandas(args.input_dir, args.output_file,
                         file_prefix=args.float_file_prefix,
                         buf_dim=args.float_buf_dim,
-			            progress=args.progress)
+			            progress=args.progress,
+                        keep_fields=keep_fields)

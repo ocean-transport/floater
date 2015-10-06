@@ -10,7 +10,7 @@ class MITgcmFloatData(object):
     """Everything we need to interact with MITgcm float output data."""
 
     def __init__(self, data_path, file_prefix='float_trajectories',
-                 buf_dim=14, dtype=np.dtype('>f4')):
+                 buf_dim=14, dtype=np.dtype('>f4'), keep_fields=None):
         """Initialize object with information about the location and datatype of
         the floats.
 
@@ -23,6 +23,8 @@ class MITgcmFloatData(object):
             Number of records in the float file
         dtype : numpy.dtype
             How the data is encoded
+        keep_fiels : list
+            The names of the fields to retain (discard those not in the list)
         """
 
         self._data_path = data_path
@@ -52,6 +54,11 @@ class MITgcmFloatData(object):
         # need to decide whether it makes sense to recast
         self.rec_dtype = np.dtype([ (k, self._dtype) for k in self.fields ])
 
+        if keep_fields is None:
+            self.out_dtype = rec_dtype
+        else:
+            self.out_dtype = np.dtype([ (k, self._dtype) for k in keep_fields ])
+
     def generator(self, read_blocksize_mb=64, return_full_block=False,
                     progress=True
             ):
@@ -78,7 +85,8 @@ class MITgcmFloatData(object):
                 n = 0
                 while True:
                     traj = np.fromfile(f, dtype=self.rec_dtype,
-                                          count=blocksize_read)
+                                          count=blocksize_read
+                                          ).astype(self.out_dtype)
                     nrecs = len(traj)
                     n += 1
                     if nrecs==0:
