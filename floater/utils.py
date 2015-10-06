@@ -6,7 +6,8 @@ import sys
 from . import input
 
 def _maybe_add_suffix(fname, suf):
-    if fname[-3:] != suf:
+    lsuf = len(suf)
+    if fname[-lsuf:] != suf:
         fname += suf
     return fname
 
@@ -153,10 +154,10 @@ def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
         Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
     """
     import bcolz
-    output_dir = _maybe_add_suffix(output_dir, 'bcolz')
+    output_dir = _maybe_add_suffix(output_dir, '.bcolz')
     mfd = input.MITgcmFloatData(input_dir, **kwargs)
-    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.rec_dtype, count=mfd.nrecs,
-            mode='w', rootdir=output_dir)
+    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.out_dtype,
+            count=mfd.nrecs, mode='w', rootdir=output_dir)
     return ct
 
 def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
@@ -172,7 +173,7 @@ def floats_to_pandas(input_dir, output_fname, progress=False, **kwargs):
         Extra keyword arguments to pass to floater.input_formats.MITgcmFloatData
     """
     import pandas as pd
-    output_fname = _maybe_add_suffix(output_fname, 'h5')
+    output_fname = _maybe_add_suffix(output_fname, '.h5')
     key = '/floats/trajectories'
 
     with pd.HDFStore(output_fname, mode='w') as store:
@@ -196,7 +197,7 @@ def floats_to_castra(input_dir, output_fname, progress=False, **kwargs):
     import pandas as pd
     from castra import Castra
 
-    output_fname = _maybe_add_suffix(output_fname, 'castra')
+    output_fname = _maybe_add_suffix(output_fname, '.castra')
 
     mfd = input.MITgcmFloatData(input_dir, **kwargs)
     c = None

@@ -296,3 +296,58 @@ cdef class HexArrayRegion:
                     boundary.insert(n)
             free(nbr)
         return boundary
+
+def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
+    """Find convex regions around the extrema of ``a``.
+
+    PARAMETERS
+    ----------
+    a : arraylike
+        The 2D field in which to search for convex regions. Must be dtype=f64.
+    minsize : int
+        The minimum size of regions to return (number of points)
+
+    RETURNS
+    -------
+    regions : list of HexArrayRegion elements
+    """
+
+    cdef HexArray ha = HexArray(a)
+    cdef int [:] maxima = ha.maxima()
+    cdef int nmax
+    # these are local to the loop
+    cdef HexArrayRegion hr
+    cdef unordered_set[int] bndry
+    cdef int cnt, pt, next_pt
+    cdef DTYPE_flt_t diff, diff_min
+    cdef bint first_pt, is_convex
+
+    for nmax in maxima:
+        hr = HexArrayRegion(ha)
+        hr.add_point(nmax)
+        bndry = hr._exterior_boundary()
+        cnt = 0
+        diff_min = 0.0
+        is_convex = True
+        while is_convex:
+            first_pt = True
+            for pt in bndry:
+                diff = ha.ar[nmax] - ha.ar[pt]
+                if first_pt:
+                    diff_min = diff
+                if diff <= diff_min:
+                    next_pt = pt
+                    diff_min = diff
+            # at the begnning, just add the point
+            if cnt < 5:
+                hr.add_point(next_pt):
+                cnt += 1
+            # otherwise check for convexity
+            elif _test_convex(hr, next_pt):
+                hr.add_point(next_pt):
+            else:
+                is_convex = False
+
+cdef bint _test_convex(HexArrayRegion hr, int pt):
+    cdef unordered_set[int] ib = hr.interior_boundary()
+    return 1
