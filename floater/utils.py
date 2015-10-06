@@ -1,5 +1,4 @@
 import numpy as np
-import tables
 import os
 import fnmatch
 import sys
@@ -20,6 +19,7 @@ def floats_to_tables(float_dir, output_fname,
                      read_blocksize_mb=64,
                      max_write_blocks=np.inf):
     """Translate an MITgcm float output file into pytables HDF format."""
+    import tables
 
     myfiles = []
     for file in os.listdir(float_dir):
