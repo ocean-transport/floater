@@ -9,7 +9,7 @@ cimport numpy as np
 from libc.stdlib cimport malloc, free
 from libcpp.unordered_set cimport unordered_set
 from cython.parallel cimport prange, threadid
-
+from scipy.spatial import qhull
 
 # integer indices
 DTYPE_int = np.int32
@@ -78,6 +78,15 @@ cdef class HexArray:
 
     cdef bint is_border_ji(self, DTYPE_int_t j, DTYPE_int_t i) nogil:
         return (i==0) or (i==self.Nx-1) or (j==0) or (j==self.Ny-1)
+
+    cdef DTYPE_flt_t _xpos(self, int n) nogil:
+        return <DTYPE_flt_t> (n % self.Nx) + 0.25 - 0.5*((n / self.Nx)%2)
+
+    cdef DTYPE_flt_t _ypos(self, int n) nogil:
+        return <DTYPE_flt_t> (n / self.Nx)
+
+    def pos(self, int n):
+        return (self._xpos(n), self._ypos(n))
 
     cdef int* _neighbors(self, DTYPE_int_t n) nogil:
         """Given index n, return neighbor indices.
@@ -229,7 +238,7 @@ cdef class HexArray:
 
     cpdef np.ndarray[int, ndim=1] maxima(self):
         cpoints = self.classify_critical_points()
-        return np.nonzero(cpoints.ravel()==1)[0]
+        return np.nonzero(cpoints.ravel()==1)[0].astype(DTYPE_int)
 
 cdef class HexArrayRegion:
 
@@ -249,14 +258,20 @@ cdef class HexArrayRegion:
         def __get__(self):
             return self.members
 
-    def add_point(self, int pt):
-        self._add_point(pt)
-
     def __contains__(self, int pt):
         return self.members.count(pt) > 0
 
+    def add_point(self, int pt):
+        self._add_point(pt)
+
     cdef void _add_point(self, int pt) nogil:
         self.members.insert(pt)
+
+    def remove_point(self, int pt):
+        self._remove_point(pt)
+
+    cdef void _remove_point(self, int pt) nogil:
+        self.members.erase(pt)
 
     def exterior_boundary(self):
         return self._exterior_boundary()
@@ -297,6 +312,61 @@ cdef class HexArrayRegion:
             free(nbr)
         return boundary
 
+    def is_convex(self):
+        return self._is_convex()
+
+    cdef bint _is_convex(self):
+        # interior boundary
+        cdef unordered_set[int] ib = self._interior_boundary()
+        cdef unordered_set[int] eb = self._exterior_boundary()
+        cdef size_t nib = len(ib)
+        # the coordinates of the test point
+        cdef DTYPE_flt_t xpt, ypt
+        # the coordinates of the boundary points
+        # need to pass a numpy array to qhull anyway
+        cdef np.ndarray[DTYPE_flt_t, ndim=2] ib_points
+        # vertices of hull
+        cdef DTYPE_flt_t [:,:] hull_vertices
+        # worth making a view? how to release gil?
+        ib_points = np.empty((nib, 2), dtype=DTYPE_flt)
+
+        cdef size_t npt, nhull
+        cdef int n = 0
+
+        for npt in ib:
+            ib_points[n,0] = self.ha._xpos(npt)
+            ib_points[n,1] = self.ha._ypos(npt)
+            n += 1
+
+        # straight python from here on
+        # how to speed this up?
+        try:
+            hull = qhull.ConvexHull(ib_points)
+            hull_vertices = hull.points[hull.vertices]
+        except:
+            # any kind of error means probably not
+            return False
+
+        # check to see if any of the exterior boundary points lie
+        # inside the convex hull
+        for npt in eb:
+            xpt = self.ha._xpos(npt)
+            ypt = self.ha._ypos(npt)
+            if _point_in_poly(hull_vertices, xpt, ypt):
+                return False
+        return True
+
+    def still_convex(self, int pt):
+        return self._still_convex(pt)
+
+    cdef bint _still_convex(self, int pt):
+        cdef bint sc
+        self._add_point(pt)
+        sc = self._is_convex()
+        self._remove_point(pt)
+        return sc
+
+
 def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
     """Find convex regions around the extrema of ``a``.
 
@@ -313,8 +383,8 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
     """
 
     cdef HexArray ha = HexArray(a)
-    cdef int [:] maxima = ha.maxima()
-    cdef int nmax
+    cdef DTYPE_int_t [:] maxima = ha.maxima()
+    cdef DTYPE_int_t nmax
     # these are local to the loop
     cdef HexArrayRegion hr
     cdef unordered_set[int] bndry
@@ -322,32 +392,75 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
     cdef DTYPE_flt_t diff, diff_min
     cdef bint first_pt, is_convex
 
+    regions = []
     for nmax in maxima:
         hr = HexArrayRegion(ha)
         hr.add_point(nmax)
-        bndry = hr._exterior_boundary()
         cnt = 0
         diff_min = 0.0
         is_convex = True
         while is_convex:
+            bndry = hr._exterior_boundary()
+            print cnt, len(hr.members)
             first_pt = True
             for pt in bndry:
                 diff = ha.ar[nmax] - ha.ar[pt]
                 if first_pt:
                     diff_min = diff
+                    first_pt = False
                 if diff <= diff_min:
                     next_pt = pt
                     diff_min = diff
             # at the begnning, just add the point
-            if cnt < 5:
-                hr.add_point(next_pt):
+            if cnt < 3:
+                print "Adding", next_pt
+                hr._add_point(next_pt)
+                print hr.members
                 cnt += 1
             # otherwise check for convexity
-            elif _test_convex(hr, next_pt):
-                hr.add_point(next_pt):
             else:
-                is_convex = False
+                print 'doing qhul'
+                if hr._still_convex(next_pt):
+                    hr._add_point(next_pt)
+                else:
+                    is_convex = False
+        regions.append(hr)
+    return regions
 
 cdef bint _test_convex(HexArrayRegion hr, int pt):
     cdef unordered_set[int] ib = hr.interior_boundary()
     return 1
+
+def point_in_poly(np.ndarray[DTYPE_flt_t, ndim=2] npverts,
+                    DTYPE_flt_t testx, DTYPE_flt_t testy):
+    cdef DTYPE_flt_t [:,:] verts
+    verts = npverts
+    return _point_in_poly(verts, testx, testy)
+
+# I don't fully understand why this works, but it does
+# http://stackoverflow.com/a/2922778/3266235
+cdef bint _point_in_poly(DTYPE_flt_t [:,:] verts,
+                         DTYPE_flt_t testx, DTYPE_flt_t testy) nogil:
+    cdef size_t nvert = verts.shape[0]
+    cdef size_t i = 0
+    cdef size_t j = nvert -1
+    cdef bint c = 0
+    while (i < nvert):
+        if ( ((verts[i,1]>testy) != (verts[j,1]>testy)) and
+             (testx < (verts[j,0]-verts[i,0]) * (testy-verts[i,1])
+                      / (verts[j,1]-verts[i,1]) + verts[i,0]) ):
+            c = not c
+        j = i
+        i += 1
+    return c
+
+# cdef int pnpoly(int nvert, float vertx*, float verty*,
+#                 float testx*, float testy*):
+#     int i, j, c = 0
+#     for (i = 0, j = nvert-1; i < nvert; j = i++) {
+#       if ( ((verty[i]>testy) != (verty[j]>testy)) &&
+#        (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+#          c = !c;
+#     }
+#     return c;
+#   }

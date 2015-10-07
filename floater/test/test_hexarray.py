@@ -41,19 +41,28 @@ class HexArrayTester(unittest.TestCase):
         self.assertEqual(len(maxima), 1)
         self.assertEqual(maxima[0], 4)
 
+    def test_pos(self):
+        a = _get_test_array()
+        ha = hexgrid.HexArray(a)
+        self.assertSequenceEqual(ha.pos(0), (0.25, 0.0))
+        self.assertSequenceEqual(ha.pos(1), (1.25, 0.0))
+        self.assertSequenceEqual(ha.pos(3), (-0.25, 1.0))
+        self.assertSequenceEqual(ha.pos(4), (0.75, 1.0))
 
 class HexArrayRegionTester(unittest.TestCase):
 
     def setUp(self):
         self.ha = hexgrid.HexArray(_get_test_array())
 
-    def test_add_point(self):
+    def test_add_remove_point(self):
         hr = hexgrid.HexArrayRegion(self.ha)
         self.assertNotIn(4, hr)
         hr.add_point(4)
         self.assertIn(4, hr)
         hr.add_point(5)
         self.assertIn(5, hr)
+        hr.remove_point(5)
+        self.assertNotIn(5, hr)
 
     def test_exterior_boundary(self):
         # points on the boundary should give no boundary
@@ -85,6 +94,33 @@ class HexArrayRegionTester(unittest.TestCase):
         ib = hr.interior_boundary()
         print hr.members
         self.assertSetEqual(ib, bd)
+
+    def test_convex(self):
+        ha = hexgrid.HexArray(shape=(10,10))
+        pos = np.array([ha.pos(n) for n in range(ha.N)])
+        x, y = pos.T
+        r = np.sqrt((x - x.mean())**2 + (y-y.mean())**2)
+        mask = r<=3
+        hr = hexgrid.HexArrayRegion(ha)
+        for n in np.nonzero(mask.ravel())[0]:
+            hr.add_point(n)
+        self.assertTrue(hr.is_convex())
+        mask += (abs(x)<=1)
+        for n in np.nonzero(mask.ravel())[0]:
+            hr.add_point(n)
+        self.assertFalse(hr.is_convex())
+
+
+
+class HexgridStandaloneFunctionTester(unittest.TestCase):
+    def test_points_in_poly(self):
+        verts = np.array([[1,-1],[1,1],[-1,1],[-1,-1]], dtype='f8')
+        self.assertTrue(hexgrid.point_in_poly(verts, 0., 0.))
+        self.assertTrue(hexgrid.point_in_poly(verts, 0.99, 0.99))
+        self.assertTrue(hexgrid.point_in_poly(verts, -0.99, -0.99))
+        self.assertFalse(hexgrid.point_in_poly(verts, 1.1, 1.1))
+        self.assertFalse(hexgrid.point_in_poly(verts, -1.1, -1.1))
+
 
 boundary_examples = """
 Exterior Boundary

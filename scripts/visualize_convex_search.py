@@ -6,11 +6,12 @@ from scipy.spatial import qhull
 ha = hexgrid.HexArray(shape=(10,10))
 pos = np.array([ha.pos(n) for n in range(ha.N)])
 x, y = pos.T
-r = np.sqrt((x - x.mean())**2 + (y-y.mean())**2)
+nmid = ha.N/2 + ha.Nx/2
+r = -np.sqrt((x - x[nmid])**2 + (y-y[nmid])**2)
 mask = r<=3
 plt.scatter(*pos.T, c=mask, cmap='Greys')
 hr = hexgrid.HexArrayRegion(ha)
- 
+
 bpos = np.array([ha.pos(n) for n in hr.interior_boundary()])
 ebpos = np.array([ha.pos(n) for n in hr.exterior_boundary()])
 plt.scatter(*bpos.T, c='m')
