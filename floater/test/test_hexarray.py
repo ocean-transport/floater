@@ -64,6 +64,11 @@ class HexArrayRegionTester(unittest.TestCase):
         hr.remove_point(5)
         self.assertNotIn(5, hr)
 
+    def test_first_point(self):
+        hr = hexgrid.HexArrayRegion(self.ha, 1)
+        self.assertIn(1, hr)
+        self.assertEqual(hr.first_point, 1)
+
     def test_exterior_boundary(self):
         # points on the boundary should give no boundary
         hr = hexgrid.HexArrayRegion(self.ha)

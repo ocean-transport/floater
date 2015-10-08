@@ -246,17 +246,24 @@ cdef class HexArrayRegion:
     cdef HexArray ha
     # the points in the region
     cdef unordered_set[int] members
+    cdef int first_point
 
-    def __cinit__(self, HexArray ha):
+    def __cinit__(self, HexArray ha, int first_pt = INT_NOT_FOUND):
         self.ha = ha
-        #self.members = new unordered_set(x0, y0, x1, y1)
-
-    #def __dealloc__(self):
-        #del self.thisptr
+        if first_pt != INT_NOT_FOUND:
+            self._add_point(first_pt)
+        self.first_point = first_pt
 
     property members:
         def __get__(self):
             return self.members
+
+    property first_point:
+        def __get__(self):
+            if self.first_point == INT_NOT_FOUND:
+                return None
+            else:
+                return self.first_point
 
     def __contains__(self, int pt):
         return self.members.count(pt) > 0
@@ -315,7 +322,7 @@ cdef class HexArrayRegion:
     def is_convex(self):
         return self._is_convex()
 
-    cdef bint _is_convex(self):
+    cdef bint _is_convex(self) nogil:
         # interior boundary
         cdef unordered_set[int] ib = self._interior_boundary()
         cdef unordered_set[int] eb = self._exterior_boundary()
@@ -340,12 +347,13 @@ cdef class HexArrayRegion:
 
         # straight python from here on
         # how to speed this up?
-        try:
-            hull = qhull.ConvexHull(ib_points)
-            hull_vertices = hull.points[hull.vertices]
-        except:
-            # any kind of error means probably not
-            return False
+        with gil:
+            try:
+                hull = qhull.ConvexHull(ib_points)
+                hull_vertices = hull.points[hull.vertices]
+            except:
+                # any kind of error means probably not
+                return False
 
         # check to see if any of the exterior boundary points lie
         # inside the convex hull
@@ -367,7 +375,8 @@ cdef class HexArrayRegion:
         return sc
 
 
-def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
+def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
+                        return_labeled_array=False):
     """Find convex regions around the extrema of ``a``.
 
     PARAMETERS
@@ -394,14 +403,12 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
 
     regions = []
     for nmax in maxima:
-        hr = HexArrayRegion(ha)
-        hr.add_point(nmax)
+        hr = HexArrayRegion(ha, nmax)
         cnt = 0
         diff_min = 0.0
         is_convex = True
         while is_convex:
             bndry = hr._exterior_boundary()
-            print cnt, len(hr.members)
             first_pt = True
             for pt in bndry:
                 diff = ha.ar[nmax] - ha.ar[pt]
@@ -413,19 +420,25 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0):
                     diff_min = diff
             # at the begnning, just add the point
             if cnt < 3:
-                print "Adding", next_pt
                 hr._add_point(next_pt)
-                print hr.members
                 cnt += 1
             # otherwise check for convexity
             else:
-                print 'doing qhul'
                 if hr._still_convex(next_pt):
                     hr._add_point(next_pt)
                 else:
                     is_convex = False
         regions.append(hr)
-    return regions
+
+    if return_labeled_array:
+        r = np.full(ha.N, -1)
+        for reg in regions:
+            r[list(reg.members)] = reg.first_point
+        r.shape = ha.Ny, ha.Nx
+        return r
+    else:
+        return regions
+
 
 cdef bint _test_convex(HexArrayRegion hr, int pt):
     cdef unordered_set[int] ib = hr.interior_boundary()
