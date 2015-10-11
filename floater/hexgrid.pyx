@@ -322,11 +322,11 @@ cdef class HexArrayRegion:
     def is_convex(self):
         return self._is_convex()
 
-    cdef bint _is_convex(self) nogil:
+    cdef bint _is_convex(self):# nogil:
         # interior boundary
         cdef unordered_set[int] ib = self._interior_boundary()
         cdef unordered_set[int] eb = self._exterior_boundary()
-        cdef size_t nib = len(ib)
+        cdef size_t nib = ib.size()
         # the coordinates of the test point
         cdef DTYPE_flt_t xpt, ypt
         # the coordinates of the boundary points
@@ -335,34 +335,35 @@ cdef class HexArrayRegion:
         # vertices of hull
         cdef DTYPE_flt_t [:,:] hull_vertices
         # worth making a view? how to release gil?
-        ib_points = np.empty((nib, 2), dtype=DTYPE_flt)
 
         cdef size_t npt, nhull
         cdef int n = 0
 
+
+        # straight python from here on
+        # how to speed this up?
+        #with gil:
+        ib_points = np.empty((nib, 2), dtype=DTYPE_flt)
         for npt in ib:
             ib_points[n,0] = self.ha._xpos(npt)
             ib_points[n,1] = self.ha._ypos(npt)
             n += 1
-
-        # straight python from here on
-        # how to speed this up?
-        with gil:
-            try:
-                hull = qhull.ConvexHull(ib_points)
-                hull_vertices = hull.points[hull.vertices]
-            except:
-                # any kind of error means probably not
-                return False
+        try:
+            hull = qhull.ConvexHull(ib_points)
+            hull_vertices = hull.points[hull.vertices]
+        except:
+            # any kind of error means probably not
+            return False
 
         # check to see if any of the exterior boundary points lie
         # inside the convex hull
-        for npt in eb:
-            xpt = self.ha._xpos(npt)
-            ypt = self.ha._ypos(npt)
-            if _point_in_poly(hull_vertices, xpt, ypt):
-                return False
-        return True
+        with nogil:
+            for npt in eb:
+                xpt = self.ha._xpos(npt)
+                ypt = self.ha._ypos(npt)
+                if _point_in_poly(hull_vertices, xpt, ypt):
+                    return False
+            return True
 
     def still_convex(self, int pt):
         return self._still_convex(pt)

@@ -115,8 +115,6 @@ class HexArrayRegionTester(unittest.TestCase):
             hr.add_point(n)
         self.assertFalse(hr.is_convex())
 
-
-
 class HexgridStandaloneFunctionTester(unittest.TestCase):
     def test_points_in_poly(self):
         verts = np.array([[1,-1],[1,1],[-1,1],[-1,-1]], dtype='f8')
@@ -126,6 +124,25 @@ class HexgridStandaloneFunctionTester(unittest.TestCase):
         self.assertFalse(hexgrid.point_in_poly(verts, 1.1, 1.1))
         self.assertFalse(hexgrid.point_in_poly(verts, -1.1, -1.1))
 
+    def test_find_convex_regions(self):
+        # set up kelvin's cat's eyes flow on hexgrid
+        nx = 100
+        ha = hexgrid.HexArray(shape=(nx,nx))
+        pos = np.array([ha.pos(n) for n in range(ha.N)])
+        x, y = pos.T
+        x = (x-5)*2*np.pi/80
+        y = (y - nx/2)*2*np.pi/100
+        # Kelvin's cats eyes flow
+        a = 0.8
+        psi = np.log(np.cosh(y) + a*np.cos(x)) - np.log(1 + a)
+        cr = hexgrid.find_convex_regions(-psi.reshape(nx,nx))
+        self.assertEqual(len(cr), 1)
+        hr = cr[0]
+        self.assertTrue(np.all(psi[list(hr.members)]<0))
+        # how do we know that the region was correctly identified?
+        psimask = (psi<=0) & (x>0.05) & (x<=(2*np.pi + 0.05))
+        psiset = set(np.nonzero(psimask)[0])
+        self.assertSetEqual(psiset, hr.members)
 
 boundary_examples = """
 Exterior Boundary
