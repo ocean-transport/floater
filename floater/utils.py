@@ -10,6 +10,12 @@ def _maybe_add_suffix(fname, suf):
         fname += suf
     return fname
 
+def _convert_dtype(compound_dtype, new_base_dtype):
+    new_dtype = np.dtype([(name, new_base_dtype)
+                           for name in compound_dtype.names])
+    return new_dtype
+
+
 def floats_to_tables(float_dir, output_fname,
                      float_file_prefix='float_trajectories',
                      fltBufDim = 14,
@@ -156,7 +162,9 @@ def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
     import bcolz
     output_dir = _maybe_add_suffix(output_dir, '.bcolz')
     mfd = input.MITgcmFloatData(input_dir, **kwargs)
-    ct = bcolz.fromiter(mfd.generator(progress=progress), dtype=mfd.out_dtype,
+    output_dtype = _convert_dtype(mfd.out_dtype, 'f4')
+    ct = bcolz.fromiter(mfd.generator(progress=progress),
+            dtype=output_dtype,
             count=mfd.nrecs, mode='w', rootdir=output_dir)
     return ct
 

@@ -24,7 +24,7 @@ parser.add_argument('--output_format', choices=['pytables','bcolz','pandas'],
                          "('pytables', 'bcolz', or 'pandas')")
 
 parser.add_argument('--keep_fields', type=str,
-                    default='', metavar='FIELDS',
+                    default=None, metavar='FIELDS',
                     help="comma-dilimited list of data fields to retain")
 
 parser.add_argument('output_file',
@@ -32,10 +32,11 @@ parser.add_argument('output_file',
 
 args = parser.parse_args()
 
-keep_fields = [str(item) for item in args.keep_fields.split(',')]
-if len(keep_fields) == 0:
+if args.keep_fields is not None:
+    keep_fields = [str(item) for item in args.keep_fields.split(',')]
+else:
     keep_fields = None
-
+    
 if args.output_format=='pytables':
     utils.floats_to_tables(args.input_dir, args.output_file,
                         float_file_prefix=args.float_file_prefix,

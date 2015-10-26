@@ -53,9 +53,8 @@ class MITgcmFloatData(object):
         # MITgcm writes the index as a float, even though it is an int
         # need to decide whether it makes sense to recast
         self.rec_dtype = np.dtype([ (k, self._dtype) for k in self.fields ])
-
-        if keep_fields is None:
-            self.out_dtype = rec_dtype
+        if (keep_fields is None) or (len(keep_fields)==0):
+            self.out_dtype = self.rec_dtype
         else:
             self.out_dtype = np.dtype([ (k, self._dtype) for k in keep_fields ])
 
