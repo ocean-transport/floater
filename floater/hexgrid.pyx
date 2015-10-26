@@ -429,16 +429,21 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
                     hr._add_point(next_pt)
                 else:
                     is_convex = False
-        regions.append(hr)
+        if hr.members.size() > minsize: 
+            regions.append(hr)
 
     if return_labeled_array:
-        r = np.full(ha.N, -1)
-        for reg in regions:
-            r[list(reg.members)] = reg.first_point
-        r.shape = ha.Ny, ha.Nx
-        return r
+        return label_regions(regions, ha)
     else:
         return regions
+
+def label_regions(regions, ha):
+    r = np.full(ha.N, -1)
+    for reg in regions:
+        r[list(reg.members)] = reg.first_point
+    r.shape = ha.Ny, ha.Nx
+    return r
+ 
 
 
 cdef bint _test_convex(HexArrayRegion hr, int pt):

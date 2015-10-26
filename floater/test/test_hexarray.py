@@ -143,6 +143,9 @@ class HexgridStandaloneFunctionTester(unittest.TestCase):
         psimask = (psi<=0) & (x>0.05) & (x<=(2*np.pi + 0.05))
         psiset = set(np.nonzero(psimask)[0])
         self.assertSetEqual(psiset, hr.members)
+        # test minsize kwarg
+        cr = hexgrid.find_convex_regions(-psi.reshape(nx,nx), minsize=1e6)
+        self.assertEqual(len(cr), 0)
 
 boundary_examples = """
 Exterior Boundary
