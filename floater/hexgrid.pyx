@@ -8,6 +8,8 @@ import cython
 cimport numpy as np
 from libc.stdlib cimport malloc, free
 from libcpp.unordered_set cimport unordered_set
+#from libcpp.set cimport set
+from libcpp.vector cimport vector
 from cython.parallel cimport prange, threadid
 from scipy.spatial import qhull
 
@@ -57,7 +59,7 @@ cdef class HexArray:
     # this function sucks because it uses a python type (tuple)
     # and thus can't release the gil
     # using a c data structure (e.g. struct) would overcome gil limitation
-    cdef tuple ji_from_n(self, DTYPE_int_t n):
+    cpdef tuple ji_from_n(self, DTYPE_int_t n):
         cdef DTYPE_int_t j, i
         cdef tuple coord
         j = n / self.Nx
@@ -69,6 +71,9 @@ cdef class HexArray:
         cdef DTYPE_int_t n
         n = i + j*self.Nx
         return n
+
+    def N_from_ji(self, j, i):
+        return self.n_from_ji(j, i)
 
     cdef bint is_border_n(self, DTYPE_int_t n) nogil:
         cdef DTYPE_int_t j, i
@@ -304,19 +309,76 @@ cdef class HexArrayRegion:
 
     cdef unordered_set[int] _interior_boundary(self) nogil:
         cdef unordered_set[int] boundary
-        cdef int n, k
-        cdef int* nbr
-        cdef int npt
-        cdef size_t cnt
+        cdef int n
         for n in self.members:
-            nbr = self.ha._neighbors(n)
-            cnt = 0
-            if not nbr[0] == INT_NOT_FOUND:
-                for k in range(6):
-                    cnt += self.members.count(nbr[k])
-                if cnt<6:
-                    boundary.insert(n)
+            if self._is_boundary(n):
+                boundary.insert(n)
+        return boundary
+
+    cdef bint _is_boundary(self, int n) nogil:
+        cdef int* nbr
+        cdef size_t cnt, k
+        cdef bint result = 0
+        nbr = self.ha._neighbors(n)
+        cnt = 0
+        if not nbr[0] == INT_NOT_FOUND:
+            for k in range(6):
+                cnt += self.members.count(nbr[k])
+            if (cnt<6) and (cnt>0):
+                result = 1
+        free(nbr)
+        return result
+
+    def interior_boundary_ordered(self):
+        return self._interior_boundary_ordered()
+
+    cdef vector[int] _interior_boundary_ordered(self) nogil:
+        cdef vector[int] boundary
+        cdef int* nbr
+        cdef int n, initpt, startpt, prevpt
+        cdef bint looking = 1
+        cdef size_t cnt=0,
+        cdef size_t cntmax=100
+        # first just find any point on the boundary
+        for n in self.members:
+            if self._is_boundary(n):
+                boundary.push_back(n)
+                initpt = n
+                break
+        # now iterate through neighbors, looking for other boundary points
+
+        startpt = initpt
+        prevpt = initpt
+        cnt = 0
+        while looking==1:
+            # get the neighbors of the most recently added point
+            looking = 0
+            nbr = self.ha._neighbors(startpt)
+            if nbr[0] == INT_NOT_FOUND:
+                # we are on a boundary, stop iterating
+                pass
+            else:
+                for n in range(6):
+                    # check to see if neighbor point is also on boundary
+                    if self.members.count(nbr[n])==1:
+                        if self._is_boundary(nbr[n]):
+                            if ((nbr[n] != startpt) and
+                                (nbr[n] != prevpt) and
+                                (nbr[n] != initpt)):
+                                # stop iterating once we have found a good point
+                                #print 'from', startpt, 'adding', nbr[n]
+                                boundary.push_back(nbr[n])
+                                prevpt = startpt
+                                startpt = nbr[n]
+                                looking = 1
+                                break
+                            else:
+                                # if we got here, the circle is closed
+                                pass
             free(nbr)
+            cnt += 1
+            #if cnt>cntmax:
+            #    break
         return boundary
 
     def is_convex(self):
@@ -429,7 +491,7 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
                     hr._add_point(next_pt)
                 else:
                     is_convex = False
-        if hr.members.size() > minsize: 
+        if hr.members.size() > minsize:
             regions.append(hr)
 
     if return_labeled_array:
@@ -443,7 +505,7 @@ def label_regions(regions, ha):
         r[list(reg.members)] = reg.first_point
     r.shape = ha.Ny, ha.Nx
     return r
- 
+
 
 
 cdef bint _test_convex(HexArrayRegion hr, int pt):
