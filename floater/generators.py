@@ -65,3 +65,15 @@ class FloatSet(object):
         xx[1::2] -= self.dx/4
 
         return xx, yy
+
+    def npart_index_to_ndarray(self, data, npart):
+        """Grid the data according to its npart (particle id)
+
+        PARAMETERS
+        ----------
+        data : 1D array
+            The data to be gridded
+        npart : 1D array
+            The particle ids
+        """
+        pass
