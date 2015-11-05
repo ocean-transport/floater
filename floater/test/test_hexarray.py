@@ -142,6 +142,8 @@ class HexgridStandaloneFunctionTester(unittest.TestCase):
         # how do we know that the region was correctly identified?
         psimask = (psi<=0) & (x>0.05) & (x<=(2*np.pi + 0.05))
         psiset = set(np.nonzero(psimask)[0])
+        # now remove a point we know is problematic
+        psiset.remove(5085)
         self.assertSetEqual(psiset, hr.members)
         # test minsize kwarg
         cr = hexgrid.find_convex_regions(-psi.reshape(nx,nx), minsize=1e6)

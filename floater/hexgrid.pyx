@@ -1,7 +1,7 @@
 #cython: profile=True
-#cython: boundscheck=False
-#cython: wraparound=False
-#cython: nonecheck=False
+# #cython: boundscheck=False
+# #cython: wraparound=False
+# #cython: nonecheck=False
 #from __future__ import division
 import numpy as np
 import cython
@@ -386,37 +386,44 @@ cdef class HexArrayRegion:
     def is_convex(self):
         return self._is_convex()
 
-    cdef bint _is_convex(self):# nogil:
+    @cython.linetrace(True)
+    cdef bint _is_convex(self) nogil:
         # interior boundary
         cdef unordered_set[int] ib = self._interior_boundary()
         cdef unordered_set[int] eb = self._exterior_boundary()
+        cdef DTYPE_flt_t [:,:] ib_points
         cdef size_t nib = ib.size()
         # the coordinates of the test point
         cdef DTYPE_flt_t xpt, ypt
         # the coordinates of the boundary points
         # need to pass a numpy array to qhull anyway
-        cdef np.ndarray[DTYPE_flt_t, ndim=2] ib_points
+        #cdef np.ndarray[DTYPE_flt_t, ndim=2] ib_points
+
         # vertices of hull
         cdef DTYPE_flt_t [:,:] hull_vertices
         # worth making a view? how to release gil?
 
-        cdef size_t npt, nhull
+        cdef size_t npt, nhull, Nverts
         cdef int n = 0
 
 
         # straight python from here on
         # how to speed this up?
-        #with gil:
-        ib_points = np.empty((nib, 2), dtype=DTYPE_flt)
+        with gil:
+            ib_points = np.empty((nib, 2), dtype=DTYPE_flt)
         for npt in ib:
             ib_points[n,0] = self.ha._xpos(npt)
             ib_points[n,1] = self.ha._ypos(npt)
             n += 1
-        try:
-            hull = qhull.ConvexHull(ib_points)
-            hull_vertices = hull.points[hull.vertices]
-        except:
-            # any kind of error means probably not
+
+        # can't do try without gil
+        #try:
+        #    hull_vertices = _get_qhull_verts(ib_points)
+        #except:
+        #    return False
+        with gil:
+            hull_vertices = _get_qhull_verts(ib_points)
+        if hull_vertices.shape[0]==0:
             return False
 
         # check to see if any of the exterior boundary points lie
@@ -425,8 +432,8 @@ cdef class HexArrayRegion:
         for npt in eb:
             xpt = self.ha._xpos(npt)
             ypt = self.ha._ypos(npt)
-            #if _point_in_poly(hull_vertices, xpt, ypt):
-            if _mpl_point_in_poly(hull_vertices, xpt, ypt):
+            if _point_in_poly(hull_vertices, xpt, ypt):
+            #if _mpl_point_in_poly(hull_vertices, xpt, ypt):
                 return False
         return True
 
@@ -470,7 +477,7 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
     regions = []
     for nmax in maxima:
         hr = HexArrayRegion(ha, nmax)
-        ordered_points = [nmax,]
+        #ordered_points = [nmax,]
         cnt = 0
         diff_min = 0.0
         is_convex = True
@@ -488,17 +495,18 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
             # at the begnning, just add the point
             if cnt < 3:
                 hr._add_point(next_pt)
-                ordered_points.append(next_pt)
+                #ordered_points.append(next_pt)
                 cnt += 1
             # otherwise check for convexity
             else:
                 if hr._still_convex(next_pt):
                     hr._add_point(next_pt)
-                    ordered_points.append(next_pt)
+                    #ordered_points.append(next_pt)
                 else:
                     is_convex = False
         if hr.members.size() > minsize:
-            regions.append((hr, ordered_points))
+            #regions.append((hr, ordered_points))
+            regions.append(hr)
 
     if return_labeled_array:
         return label_regions(regions, ha)
@@ -522,6 +530,12 @@ def point_in_poly(np.ndarray[DTYPE_flt_t, ndim=2] npverts,
     verts = npverts
     return _point_in_poly(verts, testx, testy)
 
+def mpl_point_in_poly(np.ndarray[DTYPE_flt_t, ndim=2] npverts,
+                    DTYPE_flt_t testx, DTYPE_flt_t testy):
+    cdef DTYPE_flt_t [:,:] verts
+    verts = npverts
+    return _mpl_point_in_poly(verts, testx, testy)
+
 # I don't fully understand why this works, but it does
 # http://stackoverflow.com/a/2922778/3266235
 cdef bint _point_in_poly(DTYPE_flt_t [:,:] verts,
@@ -531,25 +545,61 @@ cdef bint _point_in_poly(DTYPE_flt_t [:,:] verts,
     cdef size_t j = nvert -1
     cdef bint c = 0
     while (i < nvert):
-        if ( ((verts[i,1]>testy) != (verts[j,1]>testy)) and
-             (testx < (verts[j,0]-verts[i,0]) * (testy-verts[i,1])
+        # apparently all I had to do was change the > to >= to make this
+        # agree with matplotlib
+        # if ( ((verts[i,1]>testy) != (verts[j,1]>testy)) and
+        #      (testx < (verts[j,0]-verts[i,0]) * (testy-verts[i,1])
+        #               / (verts[j,1]-verts[i,1]) + verts[i,0]) ):
+        if ( ((verts[i,1]>=testy) != (verts[j,1]>=testy)) and
+             (testx <= (verts[j,0]-verts[i,0]) * (testy-verts[i,1])
                       / (verts[j,1]-verts[i,1]) + verts[i,0]) ):
+
             c = not c
         j = i
         i += 1
     return c
 
 # actually it does not work
-@cython.wraparound(True)
-def _mpl_point_in_poly(vertices, testx, testy):
+#@cython.wraparound(True)
+@cython.linetrace(True)
+cdef bint _mpl_point_in_poly(DTYPE_flt_t [:,:] verts,
+                         DTYPE_flt_t testx, DTYPE_flt_t testy):
     # make sure polygon is closed
-    vertices = np.vstack([vertices, vertices[0]])
-    codes = np.ones(len(vertices)) * mplPath.Path.LINETO
+    # do outside function
+    #vertices = np.vstack([vertices, vertices[0]])
+    cdef np.ndarray[DTYPE_int_t, ndim=1] codes
+    cdef size_t Nverts = len(verts)
+    codes = np.full(Nverts, mplPath.Path.LINETO, dtype=DTYPE_int)
     codes[0] = mplPath.Path.MOVETO
-    codes[-1] = mplPath.Path.CLOSEPOLY
-    bbPath = mplPath.Path(vertices, codes)
+    codes[Nverts-1] = mplPath.Path.CLOSEPOLY
+    bbPath = mplPath.Path(verts, codes)
     return bbPath.contains_point((testx, testy), radius=0.0)
 
+def get_qhull_verts(np.ndarray[DTYPE_flt_t, ndim=2] points):
+    return np.asarray(_get_qhull_verts(points))
+
+cdef DTYPE_flt_t [:,:] _get_qhull_verts(DTYPE_flt_t [:,:] points) nogil:
+    cdef DTYPE_flt_t [:,:] hull_vertices, vert_pts
+    cdef DTYPE_int_t [:] vert_idx
+    cdef size_t Nverts, n
+    with gil:
+        try:
+            hull = qhull.ConvexHull(points)
+            Nverts = len(hull.vertices)
+            hull_vertices = np.empty((Nverts+1,2), hull.points.dtype)
+            vert_idx = hull.vertices
+            vert_pts = hull.points
+            hull_vertices[Nverts,0] = vert_pts[vert_idx[0],0]
+            hull_vertices[Nverts,1] = vert_pts[vert_idx[0],1]
+        except:
+            return np.empty((0,2), DTYPE_flt)
+        #Nverts = 0
+
+    #hull_vertices = hull.points[hull.vertices]
+    for n in range(Nverts):
+        hull_vertices[n,0] = vert_pts[vert_idx[n],0]
+        hull_vertices[n,1] = vert_pts[vert_idx[n],1]
+    return hull_vertices
 
 # cdef int pnpoly(int nvert, float vertx*, float verty*,
 #                 float testx*, float testy*):
