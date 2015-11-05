@@ -12,6 +12,7 @@ from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
 from cython.parallel cimport prange, threadid
 from scipy.spatial import qhull
+import matplotlib.path as mplPath
 
 # integer indices
 DTYPE_int = np.int32
@@ -251,6 +252,7 @@ cdef class HexArrayRegion:
     cdef HexArray ha
     # the points in the region
     cdef unordered_set[int] members
+    cdef vector[int] members_ordered
     cdef int first_point
 
     def __cinit__(self, HexArray ha, int first_pt = INT_NOT_FOUND):
@@ -419,13 +421,14 @@ cdef class HexArrayRegion:
 
         # check to see if any of the exterior boundary points lie
         # inside the convex hull
-        with nogil:
-            for npt in eb:
-                xpt = self.ha._xpos(npt)
-                ypt = self.ha._ypos(npt)
-                if _point_in_poly(hull_vertices, xpt, ypt):
-                    return False
-            return True
+        #with nogil:
+        for npt in eb:
+            xpt = self.ha._xpos(npt)
+            ypt = self.ha._ypos(npt)
+            #if _point_in_poly(hull_vertices, xpt, ypt):
+            if _mpl_point_in_poly(hull_vertices, xpt, ypt):
+                return False
+        return True
 
     def still_convex(self, int pt):
         return self._still_convex(pt)
@@ -467,6 +470,7 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
     regions = []
     for nmax in maxima:
         hr = HexArrayRegion(ha, nmax)
+        ordered_points = [nmax,]
         cnt = 0
         diff_min = 0.0
         is_convex = True
@@ -484,15 +488,17 @@ def find_convex_regions(np.ndarray[DTYPE_flt_t, ndim=2] a, int minsize=0,
             # at the begnning, just add the point
             if cnt < 3:
                 hr._add_point(next_pt)
+                ordered_points.append(next_pt)
                 cnt += 1
             # otherwise check for convexity
             else:
                 if hr._still_convex(next_pt):
                     hr._add_point(next_pt)
+                    ordered_points.append(next_pt)
                 else:
                     is_convex = False
         if hr.members.size() > minsize:
-            regions.append(hr)
+            regions.append((hr, ordered_points))
 
     if return_labeled_array:
         return label_regions(regions, ha)
@@ -505,8 +511,6 @@ def label_regions(regions, ha):
         r[list(reg.members)] = reg.first_point
     r.shape = ha.Ny, ha.Nx
     return r
-
-
 
 cdef bint _test_convex(HexArrayRegion hr, int pt):
     cdef unordered_set[int] ib = hr.interior_boundary()
@@ -534,6 +538,18 @@ cdef bint _point_in_poly(DTYPE_flt_t [:,:] verts,
         j = i
         i += 1
     return c
+
+# actually it does not work
+@cython.wraparound(True)
+def _mpl_point_in_poly(vertices, testx, testy):
+    # make sure polygon is closed
+    vertices = np.vstack([vertices, vertices[0]])
+    codes = np.ones(len(vertices)) * mplPath.Path.LINETO
+    codes[0] = mplPath.Path.MOVETO
+    codes[-1] = mplPath.Path.CLOSEPOLY
+    bbPath = mplPath.Path(vertices, codes)
+    return bbPath.contains_point((testx, testy), radius=0.0)
+
 
 # cdef int pnpoly(int nvert, float vertx*, float verty*,
 #                 float testx*, float testy*):
