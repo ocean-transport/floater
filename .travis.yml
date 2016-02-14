@@ -11,8 +11,8 @@ python:
   - 2.7
   - 3.5
 
-gcc:
-  - 4.8
+compiler:
+  - gcc-4.8
 
 env:
   - CONDA_PACKAGES="numpy cython pandas bcolz pytest future"
