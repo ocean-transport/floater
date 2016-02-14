@@ -20,6 +20,7 @@ addons:
 
 env:
   - CONDA_PACKAGES="numpy cython pandas bcolz pytest future"
+  - CC="gcc-4.8"
 
 before_install:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
@@ -39,7 +40,6 @@ install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION $CONDA_PACKAGES
   - source activate test-environment
   - gcc -v
-  - gcc-4.8 -v
   - pip install codecov pytest-cov
   - pip install -e .
 
