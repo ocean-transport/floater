@@ -11,10 +11,10 @@ def readme():
     with open('README.md') as f:
         return f.read()
 
-#extra_compile_args = ["-std=c++11"]
-#extra_link_args = ["-std=c++11"]
-extra_compile_args = ["-std=gnu++11"]
-extra_link_args = ["-std=gnu++11"]
+extra_compile_args = ["-std=c++11"]
+extra_link_args = ["-std=c++11"]
+#extra_compile_args = ["-std=gnu++11"]
+#extra_link_args = ["-std=gnu++11"]
 
 runtime_library_dirs = []#['/usr/local/gcc-4.8/lib']
 
