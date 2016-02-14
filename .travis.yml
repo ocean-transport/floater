@@ -30,6 +30,7 @@ before_install:
 install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION $CONDA_PACKAGES
   - source activate test-environment
+  - gcc -v
   - pip install codecov pytest-cov
   - pip install -e .
 

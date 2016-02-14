@@ -1,3 +1,5 @@
+from __future__ import print_statement
+
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 import warnings
@@ -34,13 +36,13 @@ def check_for_openmp():
     try:
         cc = os.environ['CC']
     except KeyError:
-        cc = 'cc'
+        cc = 'gcc'
     with open(filename, 'w', 0) as file:
         file.write(omp_test)
     with open(os.devnull, 'w') as fnull:
         result = subprocess.call([cc, '-fopenmp', filename],
                                  stdout=fnull, stderr=fnull)
-    print 'check_for_openmp() result: ', result
+    print('check_for_openmp() result: ', result)
     os.chdir(curdir)
     #clean up
     shutil.rmtree(tmpdir)
