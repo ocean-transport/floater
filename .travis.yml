@@ -17,6 +17,7 @@ addons:
       - ubuntu-toolchain-r-test
     packages:
       - gcc-4.8
+      - g++-4.8
 
 env:
   - CONDA_PACKAGES="numpy cython pandas bcolz pytest future"
@@ -42,7 +43,7 @@ install:
   - source activate test-environment
   - gcc -v
   - pip install codecov pytest-cov
-  - CC=gcc-4.8 python setup.py build_ext
+  - CC=gcc-4.8 CXX=g++-4.8 python setup.py build_ext
   - pip install -e .
 
 script:
