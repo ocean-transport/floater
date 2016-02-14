@@ -161,10 +161,12 @@ def floats_to_bcolz(input_dir, output_dir, progress=False, **kwargs):
     """
     import bcolz
     output_dir = _maybe_add_suffix(output_dir, '.bcolz')
-    mfd = input.MITgcmFloatData(input_dir, **kwargs)
-    output_dtype = _convert_dtype(mfd.out_dtype, 'f4')
+    mfd = input.MITgcmFloatData(input_dir, cast_to_dtype='f4', **kwargs)
+    # it does NOT WORK to typecast at this point
+    # values get all mangled
+    #output_dtype = _convert_dtype(mfd.out_dtype, 'f4')
     ct = bcolz.fromiter(mfd.generator(progress=progress),
-            dtype=output_dtype,
+            dtype=mfd.out_dtype,
             count=mfd.nrecs, mode='w', rootdir=output_dir)
     return ct
 
