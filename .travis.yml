@@ -11,6 +11,9 @@ python:
   - 2.7
   - 3.5
 
+gcc:
+  - 4.8
+
 env:
   - CONDA_PACKAGES="numpy cython pandas bcolz pytest future"
 
@@ -26,6 +29,7 @@ before_install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
   - conda info -a
+
 
 install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION $CONDA_PACKAGES
