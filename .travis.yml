@@ -44,7 +44,7 @@ install:
   - source activate test-environment
   - gcc -v
   - pip install codecov pytest-cov
-  - CC=gcc-4.8 CXX=g++-4.8 python setup.py build_ext
+  - CC=gcc-4.8 CXX=g++-4.8 python setup.py build_ext --inplace
   - pip install -e .
 
 script:
