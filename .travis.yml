@@ -9,7 +9,8 @@ matrix:
 
 python:
   - 2.7
-  - 3.5
+# skip for now, but should add later
+#  - 3.5
 
 addons:
   apt:
