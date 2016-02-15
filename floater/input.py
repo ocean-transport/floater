@@ -10,7 +10,8 @@ class MITgcmFloatData(object):
     """Everything we need to interact with MITgcm float output data."""
 
     def __init__(self, data_path, file_prefix='float_trajectories',
-                 buf_dim=14, dtype=np.dtype('>f4'), keep_fields=None):
+                 buf_dim=14, file_dtype=np.dtype('>f4'),
+                 cast_to_dtype=np.dtype('f4'), keep_fields=None):
         """Initialize object with information about the location and datatype of
         the floats.
 
@@ -21,16 +22,18 @@ class MITgcmFloatData(object):
         file_prefix : str
         buf_dim : int
             Number of records in the float file
-        dtype : numpy.dtype
-            How the data is encoded
-        keep_fiels : list
+        file_dtype : numpy.dtype
+            How the data is encoded in the files
+        cast_to_dtype:
+            Recast the output as this type
+        keep_fields : list
             The names of the fields to retain (discard those not in the list)
         """
 
         self._data_path = data_path
         self._file_prefix = file_prefix
         self._buf_dim = buf_dim
-        self._dtype = dtype
+        self._dtype = file_dtype
 
         # map buffer lengths to knowledge about MITgcm float output format
         assert self._buf_dim in [8, 13, 14]
@@ -57,6 +60,10 @@ class MITgcmFloatData(object):
             self.out_dtype = self.rec_dtype
         else:
             self.out_dtype = np.dtype([ (k, self._dtype) for k in keep_fields ])
+        # do typecasting here
+        if cast_to_dtype is not None:
+            self.out_dtype = np.dtype([
+                    (k, cast_to_dtype) for k in self.out_dtype.names ])
 
     def generator(self, read_blocksize_mb=64, return_full_block=False,
                     progress=True
