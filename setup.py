@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 import warnings
@@ -11,7 +13,10 @@ def readme():
 
 extra_compile_args = ["-std=c++11"]
 extra_link_args = ["-std=c++11"]
-runtime_library_dirs = ['/usr/local/gcc-4.8/lib']
+#extra_compile_args = ["-std=gnu++11"]
+#extra_link_args = ["-std=gnu++11"]
+
+runtime_library_dirs = []#['/usr/local/gcc-4.8/lib']
 
 # check for openmp following
 # http://stackoverflow.com/questions/16549893/programatically-testing-for-openmp-support-from-a-python-setup-script
@@ -34,13 +39,13 @@ def check_for_openmp():
     try:
         cc = os.environ['CC']
     except KeyError:
-        cc = 'cc'
+        cc = 'gcc'
     with open(filename, 'w', 0) as file:
         file.write(omp_test)
     with open(os.devnull, 'w') as fnull:
         result = subprocess.call([cc, '-fopenmp', filename],
                                  stdout=fnull, stderr=fnull)
-    print 'check_for_openmp() result: ', result
+    print('check_for_openmp() result: ', result)
     os.chdir(curdir)
     #clean up
     shutil.rmtree(tmpdir)
