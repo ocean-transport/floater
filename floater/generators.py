@@ -24,9 +24,9 @@ class FloatSet(object):
         self.ylim = ylim
         self.Lx = xlim[1] - xlim[0]
         self.Ly = ylim[1] - ylim[0]
-        if (self.Lx % dx) != 0.0:
+        if ((self.Lx*10.0**4.0) % (dx*10.0**4.0))/10.0**4.0 != 0.0:
             raise ValueError("Lx is not divisible evenly by dx")
-        if (self.Ly % dy) != 0.0:
+        if ((self.Ly*10.0**4.0) % (dy*10.0**4.0))/10.0**4.0 != 0.0:
             raise ValueError("Ly is not divisible evenly by dy")
         self.Nx = int(self.Lx / dx)
         self.Ny = int(self.Ly / dy)
@@ -65,3 +65,88 @@ class FloatSet(object):
         xx[1::2] -= self.dx/4
 
         return xx, yy
+    
+    def to_mitgcm_format(self, filename, tstart=0, mesh='rect'):
+    	#xx, yy = np.meshgrid(x, y)
+
+    	#if mesh = 'rect':
+    	#    xx, yy = np.meshgrid(x, y)
+    	#    myx = xx
+    	#    #output_fname = 'flt_ini_pos.irreg.bin'
+    	if mesh == 'hex':
+        	xx, yy = self.get_hexmesh()
+    	else:
+        	xx, yy = np.get_rectmesh()
+        myx = xx
+    
+    	ini_times = 1
+
+    	# float properties
+	
+    	# kpart: depth of float release in meters, depth is negative, i.e. -1500
+    	# for 1500 m
+    	#kpart = -0.5 # for 3d float
+    	kpart = -0.5
+    
+    	# kfloat: target level of float (??)
+    	kfloat = -0.5
+
+    	# iup: flag if the float 
+    	# - should profile ( > 0 = return cycle (in s) to surface)
+    	# - remain at depth ( = 0 )
+    	# - is a 3D float ( = -1 )
+    	# - should be advected WITHOUT additional noise (= -2 ); this implies that
+    	# the float is non-profiling
+    	# - is a mooring ( = -3 ); i.e. the float is not advected
+    	iup = 0;
+
+    	# itop: time of float at the surface (in s) 
+
+    	itop = 0
+    	# end time of integration of float (in s); note if tend = 1 floats are
+    	# integrated till the end of the integration;
+    	tend = -1;
+
+    	# initialization
+    	#tstart = 259200;
+
+    	# number of floats
+    	N = self.Nx * self.Ny
+
+    	# initial positions
+    	# (a line along 200 degrees)
+    	lon = myx.ravel()
+    	lat = yy.ravel()
+	output_dtype = np.dtype('>f4')
+    	# for all the float data
+    	flt_matrix = np.zeros((N+1,9), dtype=output_dtype)
+
+    	flt_matrix[1:,0] = np.arange(N)+1
+    	flt_matrix[1:,1] = tstart
+    	flt_matrix[1:,2] = lon
+    	flt_matrix[1:,3] = lat
+    	flt_matrix[1:,4] = kpart
+    	flt_matrix[1:,5] = kfloat
+    	flt_matrix[1:,6] = iup
+    	flt_matrix[1:,7] = itop
+    	flt_matrix[1:,8] = tend
+
+    	# first line in initialization file contains a record with 
+    	# - the number of floats on that tile in the first record
+    	# - the total number of floats in the sixth record
+
+    	# original
+    	# flt_matrix[0,0] = N;
+    	# flt_matrix[1,0] = -1;
+    	# flt_matrix[5,0] = N;
+    	# flt_matrix[8,0] = -1;
+
+    	# copied from Andreas
+    	flt_matrix[0,0] = N;
+    	flt_matrix[0,1] = -1
+    	flt_matrix[0,4] = -1
+    	flt_matrix[0,5] = N
+    	flt_matrix[0,8] = -1
+
+    	#fname = os.path.join(output_dir, output_fname)
+    	return flt_matrix.tofile(filename)
