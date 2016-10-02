@@ -20,18 +20,20 @@ class FloatSet(object):
             grid spacing in y direction
         """
 
-        self.xlim = xlim
-        self.ylim = ylim
+        if not len(xlim)==2 and len(ylim)==2:
+            raise ValueError('xlim and ylim should both by length 2.')
+        self.xlim = [float(x) for x in xlim]
+        self.ylim = [float(y) for y in ylim]
         self.Lx = xlim[1] - xlim[0]
         self.Ly = ylim[1] - ylim[0]
         if ((self.Lx*10.0**4.0) % (dx*10.0**4.0))/10.0**4.0 != 0.0:
             raise ValueError("Lx is not divisible evenly by dx")
         if ((self.Ly*10.0**4.0) % (dy*10.0**4.0))/10.0**4.0 != 0.0:
             raise ValueError("Ly is not divisible evenly by dy")
-        self.Nx = int(self.Lx / dx)
-        self.Ny = int(self.Ly / dy)
-        self.dx = dx
-        self.dy = dy
+        self.dx = float(dx)
+        self.dy = float(dy)
+        self.Nx = int(self.Lx / self.dx)
+        self.Ny = int(self.Ly / self.dy)
         self.x = self.xlim[0] + self.dx * np.arange(self.Nx) + self.dx/2
         self.y = self.ylim[0] + self.dy * np.arange(self.Ny) + self.dy/2
 
@@ -65,7 +67,7 @@ class FloatSet(object):
         xx[1::2] -= self.dx/4
 
         return xx, yy
-    
+
     def to_mitgcm_format(self, filename, tstart=0, mesh='rect'):
     	#xx, yy = np.meshgrid(x, y)
 
@@ -78,20 +80,20 @@ class FloatSet(object):
     	else:
         	xx, yy = np.get_rectmesh()
         myx = xx
-    
+
     	ini_times = 1
 
     	# float properties
-	
+
     	# kpart: depth of float release in meters, depth is negative, i.e. -1500
     	# for 1500 m
     	#kpart = -0.5 # for 3d float
     	kpart = -0.5
-    
+
     	# kfloat: target level of float (??)
     	kfloat = -0.5
 
-    	# iup: flag if the float 
+    	# iup: flag if the float
     	# - should profile ( > 0 = return cycle (in s) to surface)
     	# - remain at depth ( = 0 )
     	# - is a 3D float ( = -1 )
@@ -100,7 +102,7 @@ class FloatSet(object):
     	# - is a mooring ( = -3 ); i.e. the float is not advected
     	iup = 0;
 
-    	# itop: time of float at the surface (in s) 
+    	# itop: time of float at the surface (in s)
 
     	itop = 0
     	# end time of integration of float (in s); note if tend = 1 floats are
@@ -131,7 +133,7 @@ class FloatSet(object):
     	flt_matrix[1:,7] = itop
     	flt_matrix[1:,8] = tend
 
-    	# first line in initialization file contains a record with 
+    	# first line in initialization file contains a record with
     	# - the number of floats on that tile in the first record
     	# - the total number of floats in the sixth record
 
