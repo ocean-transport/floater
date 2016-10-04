@@ -68,6 +68,32 @@ class FloatSet(object):
 
         return xx, yy
 
+    def npart_index_to_ndarray(self, data, npart):
+        """Grid the data according to its npart (particle id)
+
+        PARAMETERS
+        ----------
+        data : 1D array
+            The data to be gridded
+        npart : 1D array
+            The particle ids
+        """
+        pass
+
+    def parcel_area(self, latlon=True):
+        """Get the area of each parcel."""
+
+        if latlon==False:
+            # cartesian grid
+            return self.dx * self.dy
+        else:
+            R = 6.371e6
+            lon, lat = self.get_rectmesh()
+            dy = self.dy * R / 360.
+            dx = dy * np.cos(np.radians(lat)) * self.dx * R / 360.
+            return dx * dy
+
+
     def to_mitgcm_format(self, filename, tstart=0, mesh='rect'):
     	#xx, yy = np.meshgrid(x, y)
 
