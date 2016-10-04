@@ -12,7 +12,7 @@ from libcpp.unordered_set cimport unordered_set
 from libcpp.vector cimport vector
 from cython.parallel cimport prange, threadid
 from scipy.spatial import qhull
-import matplotlib.path as mplPath
+#import matplotlib.path as mplPath
 
 # integer indices
 DTYPE_int = np.int32
@@ -559,21 +559,23 @@ cdef bint _point_in_poly(DTYPE_flt_t [:,:] verts,
         i += 1
     return c
 
-# actually it does not work
+
+# don't want to have to rely on matplotlib
 #@cython.wraparound(True)
 @cython.linetrace(True)
 cdef bint _mpl_point_in_poly(DTYPE_flt_t [:,:] verts,
                          DTYPE_flt_t testx, DTYPE_flt_t testy):
+    return 0
     # make sure polygon is closed
     # do outside function
-    #vertices = np.vstack([vertices, vertices[0]])
-    cdef np.ndarray[DTYPE_int_t, ndim=1] codes
-    cdef size_t Nverts = len(verts)
-    codes = np.full(Nverts, mplPath.Path.LINETO, dtype=DTYPE_int)
-    codes[0] = mplPath.Path.MOVETO
-    codes[Nverts-1] = mplPath.Path.CLOSEPOLY
-    bbPath = mplPath.Path(verts, codes)
-    return bbPath.contains_point((testx, testy), radius=0.0)
+    ##vertices = np.vstack([vertices, vertices[0]])
+    # cdef np.ndarray[DTYPE_int_t, ndim=1] codes
+    # cdef size_t Nverts = len(verts)
+    # codes = np.full(Nverts, mplPath.Path.LINETO, dtype=DTYPE_int)
+    # codes[0] = mplPath.Path.MOVETO
+    # codes[Nverts-1] = mplPath.Path.CLOSEPOLY
+    # bbPath = mplPath.Path(verts, codes)
+    # return bbPath.contains_point((testx, testy), radius=0.0)
 
 def get_qhull_verts(np.ndarray[DTYPE_flt_t, ndim=2] points):
     return np.asarray(_get_qhull_verts(points))
