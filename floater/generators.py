@@ -77,3 +77,18 @@ class FloatSet(object):
             The particle ids
         """
         pass
+
+    def parcel_area(self, latlon=True):
+        """Get the area of each parcel."""
+
+        if latlon==False:
+            # cartesian grid
+            return self.dx * self.dy
+        else:
+            R = 6.371e6
+            lon, lat = self.get_rectmesh()
+            dy = self.dy * R / 360.
+            dx = dy * np.cos(np.radians(lat)) * self.dx * R / 360.
+            return dx * dy
+
+
