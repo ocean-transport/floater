@@ -90,7 +90,7 @@ class FloatSet(object):
             R = 6.371e6
             lon, lat = self.get_rectmesh()
             dy = R * np.radians(self.dy)                            
-            dx = self.dx * np.cos(np.radians(lat))  
+            dx = R * np.radians(self.dx) * np.cos(np.radians(lat))  
             # old code, wrong!
             #dy = self.dy * R / 360.
             #dx = dy * np.cos(np.radians(lat)) * self.dx * R / 360.
