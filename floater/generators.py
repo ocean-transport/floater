@@ -69,6 +69,8 @@ class FloatSet(object):
         self.model_grid = model_grid
 
 
+
+
     def get_rectmesh(self):
         """Get the coordinates of the float positions in a rectangualr mesh.
 
