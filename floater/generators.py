@@ -40,13 +40,14 @@ class FloatSet(object):
             grid spacing in x direction
         dy : float
             grid spacing in y direction
-        model_grid : dictionary, optional
-            the following key value pairs are expected
-                'land_mask': np.ndarray of bools
-                    2d array of dimensions len(lon) by len(lat).
-                    An element is True iff the corresponding tracer cell grid point is unmasked (ocean)
-                'lon': 1d array of the mask grid longitudes
-                'lat': 1d array of the mask grid latitudes
+    model_grid : dictionary
+        the following key value pairs are expected
+            'land_mask': np.ndarray of bools
+                2d array of dimensions in C order: shape==(len(lat), len(lon))
+                An element is True iff the corresponding tracer cell grid point
+                is unmasked (ocean)
+            'lon': 1d array of the mask grid longitudes
+            'lat': 1d array of the mask grid latitudes
         """
 
         if not len(xlim)==2 and len(ylim)==2:
