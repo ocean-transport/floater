@@ -105,9 +105,12 @@ def test_land_mask(fs_with_land):
     # check that the floats are beneath the coast (margin of error 2*dy)
     assert np.all(float_y <= coast_lat+2*fs.dy)
 
+    num_floats = len(float_x)
+    assert num_floats == len(float_y)
     #check that there are several floats
-    assert len(float_x) > 1
-    assert len(float_y) > 1
+    assert num_floats > 1
+    # check that something has been masked
+    assert num_floats < (fs.Nx*fs.Ny)
 
     #hex grid test
     float_x, float_y = fs.get_hexmesh()
