@@ -40,8 +40,8 @@ class FloatSet(object):
             grid spacing in x direction
         dy : float
             grid spacing in y direction
-    model_grid : dictionary
-        the following key value pairs are expected
+        model_grid : dictionary
+            the following key value pairs are expected
             'land_mask': np.ndarray of bools
                 2d array of dimensions in C order: shape==(len(lat), len(lon))
                 An element is True iff the corresponding tracer cell grid point
@@ -137,47 +137,51 @@ class FloatSet(object):
             #dx = dy * np.cos(np.radians(lat)) * self.dx * R / 360.
             return dx * dy
 
-    def to_mitgcm_format(self, filename, tstart=0, iup=0, mesh='rect', model_grid=None):
-        """Output floatset in MITgcm format
+    def to_mitgcm_format(self, filename, tstart=0, iup=0, mesh='rect',
+                         read_binary_prec=64):
+        """Output floatset data in MITgcm format
+
         PARAMETERS
         ----------
-        filename : The filename to save the floatset data in
-               (e.g.float.ini.pos.hex.bin)
-        tstart : time for float initialisation (default = 0)
-        iup : flag if the float
-             - should profile ( > 0 = return cycle (in s) to surface)
-             - remain at depth ( = 0 )
-             - is a 3D float ( = -1 )
-             - should be advected WITHOUT additional noise (= -2 );
-        this implies that the float is non-profiling
-             - is a mooring ( = -3 ); i.e. the float is not advected
-        mesh : choice of mesh
-         - 'rect' : rectangular cartesian
-         - 'hex' : hexagonal
-        model_grid : dictionary
-            - expected key value pairs
-                'land_mask': np.ndarray of bools
-                        2d array of dimensions len(lon) by len(lat).
-                        An element is True iff the corresponding tracer cell
-                        center point is unmasked (ocean)
-                'lon': 1d array of the model grid tracer center longitudes
-                'lat': 1d array of the model grid tracer center latitudes
+        filename : str
+            The filename to save the floatset data in
+            (e.g.float.ini.pos.hex.bin)
+        tstart : float
+            time for float initialisation (default = 0)
+        iup : int
+            flag if the float
+            - should profile ( > 0 = return cycle (in s) to surface)
+            - remain at depth ( = 0 )
+            - is a 3D float ( = -1 )
+            - should be advected WITHOUT additional noise (= -2 );
+                (this implies that the float is non-profiling)
+            - is a mooring ( = -3 ); i.e. the float is not advected
+        mesh : {'rect', 'hex'}
+            - 'rect' : rectangular cartesian
+            - 'hex' : hexagonal
+        read_binary_prec : {32, 64}
+            data precision for binary file (should match MITgcm data file)
         """
-        if model_grid is None:
-            if mesh == 'hex':
-                xx, yy = self.get_hexmesh()
-            else:
-                xx, yy = self.get_rectmesh()
-            myx = xx
 
-            ini_times = 1
-
-            # initial positions
-            lon = myx.ravel()
-            lat = yy.ravel()
+        if read_binary_prec==32:
+            dtype = np.dtype('>f4')
+        elif read_binary_prec==64:
+            dtype = np.dtype('>f8')
         else:
-            #place floats just in ocean
-            lon, lat = np.transpose(self.get_oceancoords(model_grid, mesh))
+            raise ValueError('read_binary_prec should be 32 or 64; '
+                             'got %g' % read_binary_prec )
+
+        if mesh == 'hex':
+            xx, yy = self.get_hexmesh()
+        else:
+            xx, yy = self.get_rectmesh()
+        myx = xx
+
+        ini_times = 1
+
+        # initial positions
+        lon = myx.ravel()
+        lat = yy.ravel()
 
         # other float properties
 
@@ -204,7 +208,7 @@ class FloatSet(object):
         # which was was wrong for masked cases
         N = len(lon)
 
-        output_dtype = np.dtype('>f4')
+        output_dtype = np.dtype(dtype)
         # for all the float data
         flt_matrix = np.zeros((N+1,9), dtype=output_dtype)
 
@@ -236,7 +240,7 @@ class FloatSet(object):
         flt_matrix[0,8] = -1
 
         #fname = os.path.join(output_dir, output_fname)
-        return flt_matrix.tofile(filename)
+        flt_matrix.tofile(filename)
 
 
 def _subset_floats_from_mask(xx, yy, model_grid):
