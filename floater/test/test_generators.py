@@ -14,7 +14,7 @@ domain_geometries = [
     ((10.,20.), (20,30.), 0.1, 0.1, None),
     # Anirban's example
     # https://github.com/rabernat/floater/issues/3
-    ((-60.,-50.), (33.,40.5), 0.02, 0.015, None)
+    ((-60.,-50.), (33.,40.5), 0.02, 0.015, None),
 ]
 
 def _generate_model_grid(dg):
@@ -50,6 +50,30 @@ def fs_with_land(request):
 def fs_all(request):
     xlim, ylim, dx, dy, model_grid = request.param
     return gen.FloatSet(xlim, ylim, dx, dy, model_grid=model_grid)
+
+@pytest.fixture(scope='module')
+def fs_big():
+    # Nathaniel's funky big domain
+    xlim = (0.0, 180.0)
+    ylim = (-80.0,80.0)
+    dx = 1/32.
+    dy = 1/32.
+
+    #mask grid resolution is five times as coarse as the float set
+    Nx = int((xlim[1] - xlim[0]) / dx)/5
+    Ny = int((ylim[1] - ylim[0]) / dy)/5
+    lon = np.linspace(xlim[0], xlim[1], Nx)
+    lat = np.linspace(ylim[0], ylim[1], Ny)
+
+    #set entire domain to ocean
+    mask = np.ones((Ny, Nx), dtype='bool')
+
+    #make a small land island
+    mask[5:10,5:10] = False
+
+    model_grid = {'lon': lon, 'lat': lat, 'land_mask': mask}
+    fs = gen.FloatSet(xlim, ylim, dx, dy, model_grid=model_grid)
+    return fs
 
 
 def test_float_set_shape(fs):
@@ -133,9 +157,28 @@ def test_area(fs_all):
     a = fs.parcel_area()
     assert np.all(a > 0)
 
-def test_to_mitgcm_format(fs_all, tmpdir):
 
-    fs = fs_all
+def test_to_mitgcm_format(fs_all, tmpdir):
+    _actually_do_mitgcm_check(fs_all, tmpdir)
+
+
+# Nathaniel's example
+# https://github.com/rabernat/floater/issues/20
+# http://stackoverflow.com/questions/15094611/behavior-of-float-that-is-used-as-an-integer
+@pytest.mark.skipif("TRAVIS" in os.environ and os.environ["TRAVIS"] == "true",
+                    reason="Skipping this test on Travis CI because it's too slow.")
+@pytest.mark.xfail(reason="number of floats too big to represent with 32-bit float")
+def test_big_domain_32bit(fs_big, tmpdir):
+    _actually_do_mitgcm_check(fs_big, tmpdir, prec=32)
+
+
+@pytest.mark.skipif("TRAVIS" in os.environ and os.environ["TRAVIS"] == "true",
+                    reason="Skipping this test on Travis CI because it's too slow.")
+def test_big_domain_64bit(fs_big, tmpdir):
+    _actually_do_mitgcm_check(fs_big, tmpdir, prec=64)
+
+def _actually_do_mitgcm_check(single_fs, tmpdir, prec=32):
+    fs = single_fs
     for mesh in ['rect', 'hex']:
         if mesh=='rect':
             xx, yy = fs.get_rectmesh()
@@ -144,11 +187,12 @@ def test_to_mitgcm_format(fs_all, tmpdir):
         num_floats = len(xx.ravel())
         for iup in [-1, 0, 1]:
             filename = str(tmpdir.join('ini_flt_pos_%s_%g.bin' % (mesh, iup)))
-            fs.to_mitgcm_format(filename, mesh=mesh, iup=iup)
+            fs.to_mitgcm_format(filename, mesh=mesh, iup=iup,
+                                read_binary_prec=prec)
             # check the file exists
             assert os.path.exists(filename)
             # check the file has the correct length
-            array = np.fromfile(filename, dtype='>f4')
+            array = np.fromfile(filename, dtype='>f%g' % (prec/8))
             assert len(array)==(num_floats + 1 )* 9
             # check that the number of floats written to the file matches
             # the actual number of floats
