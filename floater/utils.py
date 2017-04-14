@@ -220,9 +220,9 @@ def floats_to_castra(input_dir, output_fname, progress=False, **kwargs):
         c.extend(df)
 
 def floats_to_netcdf(input_dir, output_fname,
-                     float_file_prefix,
-                     ref_time, step_time,
-                     output_dir, output_prefix):
+                     float_file_prefix='float_trajectories',
+                     ref_time=None, step_time=86400, output_dir='./',
+                     output_prefix='float_trajectories'):
     """Convert MITgcm float data to NetCDF format.
 
     Parameters
@@ -242,7 +242,7 @@ def floats_to_netcdf(input_dir, output_fname,
     import xarray as xr
     from glob import glob
 
-    output_fname = _maybe_add_suffix(output_fname, '.nc')
+    output_fname = _maybe_add_suffix(output_fname, '_netcdf')
 
     float_files = glob(float_file_prefix+'.*.csv')
     float_digits = 10
@@ -261,6 +261,7 @@ def floats_to_netcdf(input_dir, output_fname,
         df = dd.read_csv(input_path, names=float_columns, dtype=float_dtypes, header=None)
         dfc = df.compute()
         dfcs = dfc.sort_values('npart')
+        step_time = int(step_time)
         step_num = int(dfcs.time.values[0])//step_time
         if ref_time is not None:
             ref_time = np.datetime64(ref_time, 'ns')
