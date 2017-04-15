@@ -46,6 +46,8 @@ def check_for_openmp():
         result = subprocess.call([cc, '-fopenmp', filename],
                                  stdout=fnull, stderr=fnull)
     print('check_for_openmp() result: ', result)
+    print(subprocess.call(['which', cc]))
+    print(subprocess.call([cc, '--version']))
     os.chdir(curdir)
     #clean up
     shutil.rmtree(tmpdir)
@@ -78,7 +80,7 @@ setup(name='floater',
       packages=['floater'],
       scripts=['scripts/floater_convert'],
       install_requires=['numpy', 'cython'],
-      ext_modules = cythonize(ext_module),
+      ext_modules = cythonize([ext_module]),
       include_dirs = [np.get_include()],
       test_suite = 'nose.collector',
       zip_safe=False)
