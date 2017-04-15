@@ -239,7 +239,10 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     plm = peak_local_max(data, min_distance=min_distance)
 
     for ji in plm:
-        contour, area = convex_contour_around_maximum(data, ji, 1e-7, border=5,
-                                                      convex_def=convex_def, verbose=verbose)
-        if area >= min_area:
-            yield ji, contour, area
+        # only makes sense to look for contours is the value of the maximum
+        # is greater than the contour step size
+        if data[tuple(ji)] > step:
+            contour, area = convex_contour_around_maximum(data, ji, step,
+                border=min_distance, convex_def=convex_def, verbose=verbose)
+            if area >= min_area:
+                yield ji, contour, area
