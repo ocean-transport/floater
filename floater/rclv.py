@@ -4,7 +4,8 @@ from skimage.measure import find_contours, points_in_poly, grid_points_in_poly
 from skimage.feature import peak_local_max
 from skimage.morphology import convex_hull_image, watershed
 from scipy.spatial import qhull
-
+from tqdm import tqdm
+from time import time
 
 def polygon_area(verts):
     """Compute the area of a polygon.
@@ -28,6 +29,7 @@ def polygon_area(verts):
 
 
 def get_local_region(data, ji, border_j, border_i):
+    #print("get_local_region " + repr(ji) + repr(border_i) + repr(border_j))
     j, i = ji
     nj, ni = data.shape
     jmin = j - border_j[0]
@@ -51,7 +53,8 @@ def point_in_contour(con, ji):
     return points_in_poly(np.array([i, j])[None], con[:,::-1])[0]
 
 
-def find_contour_around_maximum(data, ji, level, border_j=(5,5), border_i=(5,5)):
+def find_contour_around_maximum(data, ji, level, border_j=(5,5),
+        border_i=(5,5), max_footprint=None):
     j,i = ji
     max_val = data[j,i]
 
@@ -62,6 +65,11 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5), border_i=(5,5))
     grow_down, grow_up, grow_left, grow_right = 4*(False,)
 
     while target_con is None:
+        
+        footprint_area = sum(border_j) * sum(border_i)
+        if max_footprint and footprint_area > max_footprint:
+            raise ValueError('Footprint exceeded max_footprint')
+
         # maybe expand the border
         if grow_down:
             border_j = (border_j[0] + delta_b, border_j[1])
@@ -72,12 +80,18 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5), border_i=(5,5))
         if grow_right:
             border_i = (border_i[0], border_i[1] + delta_b)
 
+        # TODO: define a max_area flag to know when to stop growing
+
         # find the local region
         (j_rel, i_rel), region_data = get_local_region(data, (j,i), border_j, border_i)
         nj, ni = region_data.shape
 
         # extract the contours
         contours = find_contours(region_data, level)
+
+        if len(contours)==0:
+            # no contours found, grow in all directions
+            grow_down, grow_up, grow_left, grow_right = 4*(True,)
 
         # check each contour
         for con in contours:
@@ -131,7 +145,8 @@ def contour_area(con):
 
 
 def convex_contour_around_maximum(data, ji, step, border=5,
-                                  convex_def=0.01, verbose=False):
+                                  convex_def=0.01, verbose=False,
+                                  max_footprint=None):
     """Find the largest convex contour around a maximum.
 
     Parameters
@@ -163,8 +178,8 @@ def convex_contour_around_maximum(data, ji, step, border=5,
     j, i = ji
 
     # the initial search region
-    border_j = (5,5)
-    border_i = (5,5)
+    border_j = (border, border)
+    border_i = (border, border)
 
     # the test contours
     # the finer stepsize, the more careful the search
@@ -174,14 +189,19 @@ def convex_contour_around_maximum(data, ji, step, border=5,
     contour_prev = None
     region_area_prev = None
 
+    if verbose:
+        print("convex_contour_around_maximum " + repr(tuple(ji))
+            + " max_value %g" % data[tuple(ji)])
+
     for level in contour_levels:
         if verbose:
-            print (repr(ji) + ': level: %g border: ' % level) + repr(border_j) + repr(border_i)
+            print ('  level: %g border: ' % level) + repr(border_j) + repr(border_i)
 
         try:
             # try to get a contour
             contour, region_data, border_j, border_i = find_contour_around_maximum(
-                data, (j,i), level, border_j, border_i)
+                data, (j,i), level, border_j, border_i,
+                max_footprint=max_footprint)
         except ValueError as ve:
             if verbose:
                 print ve
@@ -194,11 +214,16 @@ def convex_contour_around_maximum(data, ji, step, border=5,
                   % (region_area, hull_area, cd))
 
         if cd > convex_def:
+            if verbose:
+                print("  exceeded convexity deficiency, ending loop")
             break
         else:
             # keep going
             # re-center the previous contour to be referenced to the
             # absolute position
+            if verbose:
+                print("  moving on to next contour level, region_data.shape: " + 
+                        repr(region_data.shape))
             contour[:, 0] += (j-border_j[0])
             contour[:, 1] += (i-border_i[0])
             contour_prev, region_area_prev = contour, region_area
@@ -207,7 +232,9 @@ def convex_contour_around_maximum(data, ji, step, border=5,
 
 
 def find_convex_contours(data, min_distance=5, min_area=100.,
-                             step=1e-7, convex_def=0.001, verbose=False):
+                             max_footprint=10000,
+                             step=1e-7, convex_def=0.001, verbose=False,
+                             use_threadpool=False):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
@@ -219,6 +246,8 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         The minimum distance around maxima
     min_area : float, optional
         The minimum area of the regions
+    max_footprint: int, optional
+        The maximum area of the footprint in which to search for contours
     step : float, optional
         the step size with which to increment the contour level
     convex_def : float, optional
@@ -226,6 +255,10 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         before the seach stops.
     verbose: bool, optional
         Whether to print out diagnostic information
+    use_threadpool : bool, optional
+        Whether to map each maximum using a multiprocessing.ThreadPool
+    progress: bool, optional
+        Whether to show a progress bar for the iteration through maxima
 
     Yields
     -------
@@ -236,10 +269,71 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         The area enclosed by the contour
     """
 
+    if use_threadpool:
+        from multiprocessing.pool import ThreadPool
+        pool = ThreadPool()
+        map_function = pool.imap_unordered
+    else:
+        from itertools import imap
+        map_function = imap
+
     plm = peak_local_max(data, min_distance=min_distance)
 
-    for ji in plm:
-        contour, area = convex_contour_around_maximum(data, ji, 1e-7, border=5,
-                                                      convex_def=convex_def, verbose=verbose)
-        if area >= min_area:
-            yield ji, contour, area
+    # function to map
+    def maybe_contour_maximum(ji):
+        tic = time()
+        result = None
+        if data[tuple(ji)] > step:
+            # only makes sense to look for contours is the value of the maximum
+            # is greater than the contour step size
+            contour, area = convex_contour_around_maximum(data, ji, step,
+                border=min_distance, convex_def=convex_def, verbose=verbose,
+                max_footprint=max_footprint)
+            if area >= min_area:
+                result = ji, contour, area
+        toc = time()
+        #print("point " + repr(tuple(ji)) + " took %g s" % (toc-tic))
+        return result
+
+    with tqdm(total=len(plm)) as pbar:
+        for item in map_function(maybe_contour_maximum, plm):
+            pbar.update(1)
+            if item is not None:
+                yield item
+
+
+def label_points_in_contours(shape, contours):
+    """Label the points inside each contour.
+
+    Parameters
+    ----------
+    shape : tuple
+        Shape of the original domain from which the contours were detected
+        (e.g. LAVD field)
+    contours : list of vertices
+        The contours to label (e.g. result of RCLV detection)
+
+    Returns
+    -------
+    labels : array_like
+        Array with contour labels assigned. Zero means not inside a contour
+    """
+
+    assert len(shape)==2
+
+    data = np.zeros(shape, dtype='i4')
+
+    # modify data in place with this function
+    def fill_in_contour(contour, value=1):
+        ymin, xmin = (np.floor(contour.min(axis=0)) - 1).astype('int')
+        ymax, xmax = (np.ceil(contour.max(axis=0)) + 1).astype('int')
+        region_slice = (slice(ymin,ymax), slice(xmin,xmax))
+        region_data = data[region_slice]
+        contour_rel = contour - np.array([ymin, xmin])
+        data[region_slice] = value*grid_points_in_poly(region_data.shape,
+                                                       contour_rel)
+
+    for n, con in enumerate(contours):
+        fill_in_contour(con, n)
+
+    return data
