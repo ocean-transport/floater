@@ -1,8 +1,12 @@
 from __future__ import print_function
 
+import pytest
+pytestmark = pytest.mark.skip(reason="hexarray module is being deprecated")
+
 import unittest
 import numpy as np
 from floater import hexgrid
+
 
 def _get_test_array(shape=(3,3), nonzero=[(1,1)], dtype=np.float64):
     a = np.zeros(shape, dtype)
