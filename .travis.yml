@@ -21,7 +21,7 @@ addons:
 
 env:
   - CONDA_PACKAGES="numpy scipy cython pandas bcolz pytest future xarray dask scikit-image"
-  - PIP_PACKAGES="tqdm codecov pytest-cov"
+    PIP_PACKAGES="tqdm codecov pytest-cov"
 # need to use include
 #  - CC="gcc-4.8"
 
