@@ -300,3 +300,40 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
             pbar.update(1)
             if item is not None:
                 yield item
+
+
+def label_points_in_contours(shape, contours):
+    """Label the points inside each contour.
+
+    Parameters
+    ----------
+    shape : tuple
+        Shape of the original domain from which the contours were detected
+        (e.g. LAVD field)
+    contours : list of vertices
+        The contours to label (e.g. result of RCLV detection)
+
+    Returns
+    -------
+    labels : array_like
+        Array with contour labels assigned. Zero means not inside a contour
+    """
+
+    assert len(shape)==2
+
+    data = np.zeros(shape, dtype='i4')
+
+    # modify data in place with this function
+    def fill_in_contour(contour, value=1):
+        ymin, xmin = (np.floor(contour.min(axis=0)) - 1).astype('int')
+        ymax, xmax = (np.ceil(contour.max(axis=0)) + 1).astype('int')
+        region_slice = (slice(ymin,ymax), slice(xmin,xmax))
+        region_data = data[region_slice]
+        contour_rel = contour - np.array([ymin, xmin])
+        data[region_slice] = value*grid_points_in_poly(region_data.shape,
+                                                       contour_rel)
+
+    for n, con in enumerate(contours):
+        fill_in_contour(con, n)
+
+    return data
