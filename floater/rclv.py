@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import numpy as np
 import xarray as xr
 from skimage.measure import find_contours, points_in_poly, grid_points_in_poly
@@ -65,7 +67,7 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
     grow_down, grow_up, grow_left, grow_right = 4*(False,)
 
     while target_con is None:
-        
+
         footprint_area = sum(border_j) * sum(border_i)
         if max_footprint and footprint_area > max_footprint:
             raise ValueError('Footprint exceeded max_footprint')
@@ -195,7 +197,7 @@ def convex_contour_around_maximum(data, ji, step, border=5,
 
     for level in contour_levels:
         if verbose:
-            print ('  level: %g border: ' % level) + repr(border_j) + repr(border_i)
+            print('  level: %g border: ' % level) + repr(border_j) + repr(border_i)
 
         try:
             # try to get a contour
@@ -204,7 +206,7 @@ def convex_contour_around_maximum(data, ji, step, border=5,
                 max_footprint=max_footprint)
         except ValueError as ve:
             if verbose:
-                print ve
+                print(ve)
             break
 
         # get the convexity deficiency
@@ -222,7 +224,7 @@ def convex_contour_around_maximum(data, ji, step, border=5,
             # re-center the previous contour to be referenced to the
             # absolute position
             if verbose:
-                print("  moving on to next contour level, region_data.shape: " + 
+                print("  moving on to next contour level, region_data.shape: " +
                         repr(region_data.shape))
             contour[:, 0] += (j-border_j[0])
             contour[:, 1] += (i-border_i[0])
