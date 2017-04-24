@@ -276,8 +276,12 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         pool = ThreadPool()
         map_function = pool.imap_unordered
     else:
-        from itertools import imap
-        map_function = imap
+        try:
+            from itertools import imap
+            map_function = imap
+        except ImportError:
+            # must be python 3
+            map_function = map
 
     plm = peak_local_max(data, min_distance=min_distance)
 
