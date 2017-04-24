@@ -85,7 +85,7 @@ def contour_area(con):
     cd = (hull_area - region_area ) / region_area
 
     return region_area, hull_area, cd
-    
+
 
 def find_contour_around_maximum(data, ji, level, border_j=(5,5),
         border_i=(5,5), max_footprint=None):
@@ -336,6 +336,6 @@ def label_points_in_contours(shape, contours):
                                                        contour_rel)
 
     for n, con in enumerate(contours):
-        fill_in_contour(con, n)
+        fill_in_contour(con, n+1)
 
     return data

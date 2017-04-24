@@ -84,8 +84,8 @@ def test_contour_around_maximum(sample_data_and_maximum):
 
     # check size against reference solution
     region_area, hull_area, convex_def = rclv.contour_area(con)
-    assert region_area == 575.02954788959767
-    assert hull_area == 575.0296629815823
+    np.testing.assert_allclose(region_area, 575.02954788959767)
+    np.testing.assert_allclose(hull_area, 575.0296629815823)
     assert convex_def == (hull_area - region_area) / region_area
 
 
@@ -97,7 +97,7 @@ def test_convex_contour_around_maximum(sample_data_and_maximum):
     con, area = rclv.convex_contour_around_maximum(psi, ji, step)
 
     # check against reference solution
-    assert area == 2693.8731123245125
+    np.testing.assert_allclose(area, 2693.8731123245125)
     assert len(con) == 261
 
     # for this specific psi, contour should be symmetric around maximum
@@ -113,4 +113,10 @@ def test_find_convex_contours(sample_data_and_maximum):
     ji_found, con, area = res[0]
     assert tuple(ji_found) == ji
     assert len(con) == 261
-    assert area == 2693.8731123245125
+    np.testing.assert_allclose(area, 2693.8731123245125)
+
+    # also test the "filling in" function
+    labels = rclv.label_points_in_contours(psi.shape, [con])
+    assert labels.max() == 1
+    assert labels.min() == 0
+    assert labels.sum() == 2693
