@@ -55,6 +55,38 @@ def point_in_contour(con, ji):
     return points_in_poly(np.array([i, j])[None], con[:,::-1])[0]
 
 
+def contour_area(con):
+    """Calculate the area, convex hull area, and convexity deficiency
+    of a polygon contour.
+
+    Parameters
+    ----------
+    con : arraylike
+        A 2D array of vertices with shape (N,2) that follows the scikit
+        image conventions (con[:,0] are j indices)
+
+    Returns
+    -------
+    region_area : float
+    hull_area : float
+    convexity_deficiency : float
+    """
+    # reshape the data to x, y order
+    con_points = con[:,::-1]
+
+    # calculate area of polygon
+    region_area = abs(polygon_area(con_points))
+
+    # find convex hull
+    hull = qhull.ConvexHull(con_points)
+    #hull_points = np.array([con_points[pt] for pt in hull.vertices])
+    hull_area = hull.volume
+
+    cd = (hull_area - region_area ) / region_area
+
+    return region_area, hull_area, cd
+    
+
 def find_contour_around_maximum(data, ji, level, border_j=(5,5),
         border_i=(5,5), max_footprint=None):
     j,i = ji
@@ -112,38 +144,6 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
             grow_right |= (con[0][1] == ni-1) or (con[-1][1] == ni-1)
 
     return target_con, region_data, border_j, border_i
-
-
-def contour_area(con):
-    """Calculate the area, convex hull area, and convexity deficiency
-    of a polygon contour.
-
-    Parameters
-    ----------
-    con : arraylike
-        A 2D array of vertices with shape (N,2) that follows the scikit
-        image conventions (con[:,0] are j indices)
-
-    Returns
-    -------
-    region_area : float
-    hull_area : float
-    convexity_deficiency : fload
-    """
-    # reshape the data to x, y order
-    con_points = con[:,::-1]
-
-    # calculate area of polygon
-    region_area = abs(polygon_area(con_points))
-
-    # find convex hull
-    hull = qhull.ConvexHull(con_points)
-    #hull_points = np.array([con_points[pt] for pt in hull.vertices])
-    hull_area = hull.volume
-
-    cd = (hull_area - region_area ) / region_area
-
-    return region_area, hull_area, cd
 
 
 def convex_contour_around_maximum(data, ji, step, border=5,
