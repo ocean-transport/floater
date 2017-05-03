@@ -3,7 +3,9 @@
 from __future__ import print_function
 
 import numpy as np
+import pandas as pd
 import pickle
+import xarray as xr
 from scipy.spatial import cKDTree
 
 
@@ -260,7 +262,7 @@ class FloatSet(object):
             The filename to save the floatset data in
             (e.g. 'floatset.pkl')
         """
-        
+
         with open(filename, 'wb') as file:
             pickle.dump(self, file, -1)
 
@@ -331,3 +333,44 @@ class FloatSet(object):
         return floats_ocean
 
 
+    def npart_to_2D_array(self, ds1d):
+        """Constructs 2D Dataset from 1D DataArray/DataSet of single or multi-variable.
+
+        PARAMETERS
+        ----------
+        ds1d : 1D DataArray/Dataset
+            One-dimensional dataarray/dataset of physical variable(s) with dimension 'npart'
+
+        RETURNS
+        -------
+        ds2d : 2D Dataset
+            Two-dimensional dataset of physical variable(s) with dimensions 'lat' and 'lon'
+        """
+
+        Nx = self.Nx
+        Ny = self.Ny
+        Nt = Nx*Ny
+        if type(ds1d) == xr.core.dataarray.DataArray:
+            ds1d = ds1d.to_dataset()
+        df = ds1d.to_dataframe()
+        var_list = list(df)
+        index_dict = {'index': range(1, Nt+1)}
+        var_dict = {var: np.zeros(Nt) for var in var_list}
+        frame_dict = {}
+        frame_dict.update(index_dict)
+        frame_dict.update(var_dict)
+        frame = pd.DataFrame(frame_dict)
+        framei = frame.set_index('index')
+        if self.model_grid is not None:
+            ocean_bools = self.ocean_bools
+            framei.loc[ocean_bools==True] = df.values.astype(np.float32)
+            framei.loc[ocean_bools==False] = np.float32('nan')
+        data_vars = {}
+        for var in var_list:
+            frameir = framei[var].values.reshape(Ny, Nx)
+            data_vars.update({var: (['lat', 'lon'], frameir)})
+        lon = np.float32(self.x)
+        lat = np.float32(self.y)
+        coords = {'lat': (['lat'], lat), 'lon': (['lon'], lon)}
+        ds2d = xr.Dataset(data_vars=data_vars, coords=coords)
+        return ds2d
