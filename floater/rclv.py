@@ -408,7 +408,7 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         the data
 
     Yields
-    -------
+    ------
     contour : array_like
         2D array of contour vertices with shape (N,2) that follows
         the scikit image conventions (contour[:,0] are j indices)

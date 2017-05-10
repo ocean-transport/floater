@@ -12,7 +12,7 @@ python:
   - 3.6
 
 env:
-  - CONDA_PACKAGES="numpy scipy  pandas bcolz pytest future xarray dask scikit-image"
+  - CONDA_PACKAGES="numpy scipy pandas bcolz pytest future xarray dask scikit-image"
     PIP_PACKAGES="tqdm codecov pytest-cov"
 
 before_install:

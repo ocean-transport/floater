@@ -161,12 +161,12 @@ class FloatSet(object):
             time for float initialisation (default = 0)
         iup : int
             flag if the float
-            - should profile ( > 0 = return cycle (in s) to surface)
-            - remain at depth ( = 0 )
-            - is a 3D float ( = -1 )
-            - should be advected WITHOUT additional noise (= -2 );
-                (this implies that the float is non-profiling)
-            - is a mooring ( = -3 ); i.e. the float is not advected
+                - should profile ( > 0 = return cycle (in s) to surface)
+                - remain at depth ( = 0 )
+                - is a 3D float ( = -1 )
+                - should be advected WITHOUT additional noise (= -2 );
+                    (this implies that the float is non-profiling)
+                - is a mooring ( = -3 ); i.e. the float is not advected
         mesh : {'rect', 'hex'}
             - 'rect' : rectangular cartesian
             - 'hex' : hexagonal
