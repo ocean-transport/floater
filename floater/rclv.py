@@ -9,6 +9,8 @@ from scipy.spatial import qhull
 from tqdm import tqdm
 from time import time
 
+R_earth = 6.371e6
+
 def polygon_area(verts):
     """Compute the area of a polygon.
 
@@ -27,7 +29,8 @@ def polygon_area(verts):
     # use scikit image convetions (j,i indexing)
     area_elements = ((verts_roll[:,1] + verts[:,1]) *
                      (verts_roll[:,0] - verts[:,0]))
-    return area_elements.sum()/2.0
+    # absolute value makes results independent of orientation
+    return abs(area_elements.sum())/2.0
 
 
 def get_local_region(data, ji, border_j, border_i):
@@ -75,7 +78,7 @@ def contour_area(con):
     con_points = con[:,::-1]
 
     # calculate area of polygon
-    region_area = abs(polygon_area(con_points))
+    region_area = polygon_area(con_points)
 
     # find convex hull
     hull = qhull.ConvexHull(con_points)
@@ -87,8 +90,42 @@ def contour_area(con):
     return region_area, hull_area, cd
 
 
+def project_vertices(verts, lon0, lat0, dlon, dlat):
+    """Project the logical coordinates of vertices into physical map
+    coordiantes.
+
+    Parameters
+    ----------
+    verts : arraylike
+        A 2D array of vertices with shape (N,2) that follows the scikit
+        image conventions (con[:,0] are j indices)
+    lon0, lat0 : float
+        center lon and lat for the projection
+    dlon, dlat : float
+        spacing of points in longitude
+    dlat : float
+        spacing of points in latitude
+
+    Returns
+    -------
+    verts_proj : arraylike
+        A 2D array of projected vertices with shape (N,2) that follows the
+        scikit image conventions (con[:,0] are j indices)
+    """
+
+    i, j = verts[:, 1], verts[:, 0]
+
+    # use the simplest local tangent plane projection
+    dy = (np.pi * R_earth / 180.)
+    dx = dy * np.cos(np.radians(lat0))
+    x = dx * dlon *i
+    y = dy * dlat * j
+
+    return np.vstack([y, x]).T
+
+
 def find_contour_around_maximum(data, ji, level, border_j=(5,5),
-        border_i=(5,5), max_footprint=None):
+        border_i=(5,5), max_footprint=None, proj_kwargs={}):
     j,i = ji
     max_val = data[j,i]
 
@@ -155,7 +192,7 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
 
 def convex_contour_around_maximum(data, ji, step, border=5,
                                   convex_def=0.01, verbose=False,
-                                  max_footprint=None):
+                                  max_footprint=None, proj_kwargs=None):
     """Find the largest convex contour around a maximum.
 
     Parameters
@@ -173,6 +210,9 @@ def convex_contour_around_maximum(data, ji, step, border=5,
         before the seach stops.
     verbose: bool, optional
         Whether to print out diagnostic information
+    proj_kwargs: dict, optional
+        Information for projecting the contour into spatial coordinates. Should
+        contain entries `lon0`, `lat0`, `dlon`, and `dlat`.
 
     Returns
     -------
@@ -217,9 +257,14 @@ def convex_contour_around_maximum(data, ji, step, border=5,
             break
 
         # get the convexity deficiency
-        region_area, hull_area, cd = contour_area(contour)
+        if proj_kwargs is None:
+            contour_proj = contour
+        else:
+            contour_proj = project_vertices(contour, **proj_kwargs)
+
+        region_area, hull_area, cd = contour_area(contour_proj)
         if verbose:
-            print('  region_area: % 6.1f, hull_area: % 6.1f, convex_def: % 6.5e '
+            print('  region_area: % 6.1f, hull_area: % 6.1f, convex_def: % 6.5e'
                   % (region_area, hull_area, cd))
 
         if cd > convex_def:
@@ -243,7 +288,7 @@ def convex_contour_around_maximum(data, ji, step, border=5,
 def find_convex_contours(data, min_distance=5, min_area=100.,
                              max_footprint=10000,
                              step=1e-7, convex_def=0.001, verbose=False,
-                             use_threadpool=False):
+                             use_threadpool=False, lon=None, lat=None):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
@@ -254,20 +299,23 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     min_distance : int, optional
         The minimum distance around maxima
     min_area : float, optional
-        The minimum area of the regions
-    max_footprint: int, optional
-        The maximum area of the footprint in which to search for contours
+        The minimum area of the regions (pixels or projected if `lon` and `lat`
+        are specified)
+    max_footprint : int, optional
+        The maximum area (in pixels) of the footprint in which to search for
+        contours
     step : float, optional
         the step size with which to increment the contour level
     convex_def : float, optional
         The maximum convexity deficiency allowed for the contour
         before the seach stops.
-    verbose: bool, optional
+    verbose : bool, optional
         Whether to print out diagnostic information
     use_threadpool : bool, optional
         Whether to map each maximum using a multiprocessing.ThreadPool
-    progress: bool, optional
-        Whether to show a progress bar for the iteration through maxima
+    lon, lat : arraylike
+        Longitude and latitude of data points. Should be 1D arrays such that
+        ``len(lon) == data.shape[1]`` and ``len(lat) == data.shape[0]``
 
     Yields
     -------
@@ -275,8 +323,23 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         2D array of contour vertices with shape (N,2) that follows
         the scikit image conventions (contour[:,0] are j indices)
     area : float
-        The area enclosed by the contour
+        The area enclosed by the contour (in pixels or projected if
+        `lon` and `lat` are specified)
     """
+
+    # do some checks on the coordinates if they are specified
+    if (lon is not None) or (lat is not None):
+        if not ((len(lat) == data.shape[0]) and (len(lon) == data.shape[1])):
+            raise ValueError('`lon` or `lat` have the incorrect length')
+        dlon = lon[1] - lon[0]
+        dlat = lat[1] - lat[0]
+        # make sure that the lon and lat are evenly spaced
+        if not (np.allclose(np.diff(lon), dlon) and
+                np.allclose(np.diff(lat), dlat)):
+            raise ValueError('`lon` and `lat` need to be evenly spaced')
+        proj = True
+    else:
+        proj = False
 
     if use_threadpool:
         from multiprocessing.pool import ThreadPool
@@ -297,11 +360,14 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
         tic = time()
         result = None
         if data[tuple(ji)] > step:
-            # only makes sense to look for contours is the value of the maximum
+            # only makes sense to look for contours if the value of the maximum
             # is greater than the contour step size
+            proj_kwargs = {'lon0': lon[ji[1]], 'lat0': lat[ji[0]],
+                               'dlon': dlon, 'dlat': dlat} if proj else None
+
             contour, area = convex_contour_around_maximum(data, ji, step,
                 border=min_distance, convex_def=convex_def, verbose=verbose,
-                max_footprint=max_footprint)
+                max_footprint=max_footprint, proj_kwargs=proj_kwargs)
             if area and (area >= min_area):
                 result = ji, contour, area
         toc = time()
