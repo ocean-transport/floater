@@ -1,6 +1,6 @@
 name: floater
 dependencies:
-  - python=3.6
+  - python=2.7
   - numpydoc
   - sphinx
   - numpy
