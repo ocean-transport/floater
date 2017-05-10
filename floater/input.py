@@ -16,8 +16,8 @@ class MITgcmFloatData(object):
         """Initialize object with information about the location and datatype of
         the floats.
 
-        Paramters
-        ---------
+        Parameters
+        ----------
         data_path : path
             The location of the output data on the filesystem
         file_prefix : str
