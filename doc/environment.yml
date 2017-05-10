@@ -9,5 +9,5 @@ dependencies:
   - pandas
   - xarray
   - bcolz
-  - pip
+  - pip:
     - tqdm
