@@ -6,3 +6,6 @@ dependencies:
   - numpy
   - scipy
   - scikit-image
+  - pandas
+  - xarray
+  - bcolz
