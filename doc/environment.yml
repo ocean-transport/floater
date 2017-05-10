@@ -5,4 +5,4 @@ dependencies:
   - sphinx
   - numpy
   - scipy
-  - scikit-image'
+  - scikit-image
