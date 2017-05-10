@@ -33,7 +33,7 @@ def polygon_area(verts):
     return abs(area_elements.sum())/2.0
 
 
-def get_local_region(data, ji, border_j, border_i):
+def get_local_region(data, ji, border_j, border_i, periodic=(False, False)):
     #print("get_local_region " + repr(ji) + repr(border_i) + repr(border_j))
     j, i = ji
     nj, ni = data.shape
@@ -42,11 +42,90 @@ def get_local_region(data, ji, border_j, border_i):
     imin = i - border_i[0]
     imax = i + border_i[1] + 1
 
-    if (jmin < 0) or (imin < 0) or (jmax >= nj) or (imax >= ni):
-        raise ValueError("Limits " + repr(((jmin, jmax), (imin, imax))) +
-                         " outside of array shape " + repr((nj,ni)))
+    # we could easily implement wrapping with take
+    # https://docs.scipy.org/doc/numpy/reference/generated/numpy.take.html
+    # unfortunately, take is ~1000000 times slower than raw indexing and copies
+    # the data. So we need to slice and concatenate
 
-    return (j - jmin, i - imin), data[j,i] - data[jmin:jmax, imin:imax]
+    concat_down = (jmin < 0)
+    concat_up = (jmax > nj)
+    concat_left = (imin < 0)
+    concat_right = (imax > ni)
+
+    # check for valid region limits
+    if (concat_left or concat_right) and not periodic[1]:
+        raise ValueError("Region i-axis limits " + repr((imin, imax)) +
+                         " outside of array shape " + repr((nj,ni)) +
+                         " and i-axis is not periodic")
+    if (concat_up or concat_down) and not periodic[0]:
+        raise ValueError("Region j-axis limits " + repr((jmin, jmax)) +
+                         " outside of array shape " + repr((nj,ni)) +
+                         " and j-axis is not periodic")
+    if (concat_left and concat_right) or (concat_up and concat_down):
+        raise ValueError("Can't concatenate on more than one side on the same "
+                         "axis. Limits are " +
+                         repr(((jmin, jmax), (imin, imax))))
+
+    # limits for central region
+    imin_reg = max(imin, 0)
+    imax_reg = min(imax, ni)
+    jmin_reg = max(jmin, 0)
+    jmax_reg = min(jmax, nj)
+    data_center = data[jmin_reg:jmax_reg, imin_reg:imax_reg]
+
+    if concat_down:
+        data_down = data[jmin:, imin_reg:imax_reg]
+    if concat_up:
+        data_up = data[:(jmax - nj), imin_reg:imax_reg]
+    if concat_left:
+        data_left= data[jmin_reg:jmax_reg, imin:]
+    if concat_right:
+        data_right = data[jmin_reg:jmax_reg, :(imax - ni)]
+
+    # corner cases
+    if concat_down and concat_left:
+        data_down_left = data[jmin:, imin:]
+    if concat_down and concat_right:
+        data_down_right = data[jmin:, :(imax - ni)]
+    if concat_up and concat_left:
+        data_up_left = data[:(jmax - nj), imin:]
+    if concat_up and concat_right:
+        data_up_right = data[:(jmax - nj), :(imax - ni)]
+
+    # now put things together, starting with the corner cases
+    # it feels like there must be a more elegant way to do this
+    if concat_down and concat_left:
+        data_reg = np.concatenate(
+                        (np.concatenate((data_down_left, data_down), axis=1),
+                         np.concatenate((data_left, data_center), axis=1)),
+                        axis=0)
+    elif concat_down and concat_right:
+        data_reg = np.concatenate(
+                        (np.concatenate((data_down, data_down_right), axis=1),
+                         np.concatenate((data_center, data_right), axis=1)),
+                        axis=0)
+    elif concat_up and concat_left:
+        data_reg = np.concatenate(
+                        (np.concatenate((data_left, data_center), axis=1),
+                         np.concatenate((data_up_left, data_up), axis=1)),
+                        axis=0)
+    elif concat_up and concat_right:
+        data_reg = np.concatenate(
+                        (np.concatenate((data_center, data_right), axis=1),
+                         np.concatenate((data_up, data_up_right), axis=1)),
+                        axis=0)
+    elif concat_down:
+        data_reg = np.concatenate((data_down, data_center), axis=0)
+    elif concat_up:
+        data_reg = np.concatenate((data_center, data_up), axis=0)
+    elif concat_left:
+        data_reg = np.concatenate((data_left, data_center), axis=1)
+    elif concat_right:
+        data_reg = np.concatenate((data_center, data_right), axis=1)
+    else:
+        data_reg = data_center
+
+    return (j - jmin, i - imin), data[j,i] - data_reg
 
 
 def is_contour_closed(con):
@@ -125,7 +204,8 @@ def project_vertices(verts, lon0, lat0, dlon, dlat):
 
 
 def find_contour_around_maximum(data, ji, level, border_j=(5,5),
-        border_i=(5,5), max_footprint=None, proj_kwargs={}):
+        border_i=(5,5), max_footprint=None, proj_kwargs={},
+        periodic=(False, False)):
     j,i = ji
     max_val = data[j,i]
 
@@ -154,7 +234,9 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
         # TODO: define a max_area flag to know when to stop growing
 
         # find the local region
-        (j_rel, i_rel), region_data = get_local_region(data, (j,i), border_j, border_i)
+        (j_rel, i_rel), region_data = get_local_region(data, (j,i),
+                                                       border_j, border_i,
+                                                       periodic=periodic)
         nj, ni = region_data.shape
 
         # extract the contours
@@ -192,7 +274,8 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
 
 def convex_contour_around_maximum(data, ji, step, border=5,
                                   convex_def=0.01, verbose=False,
-                                  max_footprint=None, proj_kwargs=None):
+                                  max_footprint=None, proj_kwargs=None,
+                                  periodic=(False, False)):
     """Find the largest convex contour around a maximum.
 
     Parameters
@@ -208,11 +291,14 @@ def convex_contour_around_maximum(data, ji, step, border=5,
     convex_def : float, optional
         The maximum convexity deficiency allowed for the contour
         before the seach stops.
-    verbose: bool, optional
+    verbose : bool, optional
         Whether to print out diagnostic information
-    proj_kwargs: dict, optional
+    proj_kwargs : dict, optional
         Information for projecting the contour into spatial coordinates. Should
         contain entries `lon0`, `lat0`, `dlon`, and `dlat`.
+    periodic : tuple
+        Tuple of bools which specificies the periodicity of each axis (j, i) of
+        the data
 
     Returns
     -------
@@ -250,7 +336,7 @@ def convex_contour_around_maximum(data, ji, step, border=5,
             # try to get a contour
             contour, region_data, border_j, border_i = find_contour_around_maximum(
                 data, (j,i), level, border_j, border_i,
-                max_footprint=max_footprint)
+                max_footprint=max_footprint, periodic=periodic)
         except ValueError as ve:
             if verbose:
                 print(ve)
@@ -288,7 +374,8 @@ def convex_contour_around_maximum(data, ji, step, border=5,
 def find_convex_contours(data, min_distance=5, min_area=100.,
                              max_footprint=10000,
                              step=1e-7, convex_def=0.001, verbose=False,
-                             use_threadpool=False, lon=None, lat=None):
+                             use_threadpool=False, lon=None, lat=None,
+                             periodic=(False, False)):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
@@ -316,6 +403,9 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     lon, lat : arraylike
         Longitude and latitude of data points. Should be 1D arrays such that
         ``len(lon) == data.shape[1]`` and ``len(lat) == data.shape[0]``
+    periodic : tuple
+        Tuple of bools which specificies the periodicity of each axis (j, i) of
+        the data
 
     Yields
     -------
@@ -367,7 +457,8 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
 
             contour, area = convex_contour_around_maximum(data, ji, step,
                 border=min_distance, convex_def=convex_def, verbose=verbose,
-                max_footprint=max_footprint, proj_kwargs=proj_kwargs)
+                max_footprint=max_footprint, proj_kwargs=proj_kwargs,
+                periodic=periodic)
             if area and (area >= min_area):
                 result = ji, contour, area
         toc = time()
@@ -399,20 +490,41 @@ def label_points_in_contours(shape, contours):
     """
 
     assert len(shape)==2
-
-    data = np.zeros(shape, dtype='i4')
+    ny, nx = shape
 
     # modify data in place with this function
-    def fill_in_contour(contour, value=1):
+    def fill_in_contour(contour, label_data, value=1):
         ymin, xmin = (np.floor(contour.min(axis=0)) - 1).astype('int')
         ymax, xmax = (np.ceil(contour.max(axis=0)) + 1).astype('int')
+        print(((ymin, ymax), (xmin, xmax)))
+        # possibly roll the data to deal with periodicity
+        roll_x, roll_y = 0, 0
+        if ymin < 0:
+            roll_y = -ymin
+        if ymax > ny:
+            roll_y = ny - ymax
+        if xmin < 0:
+            roll_x = -xmin
+        if xmax > nx:
+            roll_x = nx - xmax
+
+        contour_rel = contour - np.array([ymin, xmin])
+
+        ymax += roll_y
+        ymin += roll_y
+        xmax += roll_x
+        xmin += roll_x
+
+        data = np.roll(np.roll(label_data, roll_x, axis=1), roll_y, axis=0)
         region_slice = (slice(ymin,ymax), slice(xmin,xmax))
         region_data = data[region_slice]
-        contour_rel = contour - np.array([ymin, xmin])
         data[region_slice] = value*grid_points_in_poly(region_data.shape,
                                                        contour_rel)
 
-    for n, con in enumerate(contours):
-        fill_in_contour(con, n+1)
+        return np.roll(np.roll(data, -roll_x, axis=1), -roll_y, axis=0)
 
-    return data
+    labels = np.zeros(shape, dtype='i4')
+    for n, con in enumerate(contours):
+        labels = fill_in_contour(con, labels, n+1)
+
+    return labels

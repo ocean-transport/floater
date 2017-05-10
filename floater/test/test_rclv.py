@@ -83,12 +83,86 @@ def test_get_local_region():
     with pytest.raises(ValueError) as ve:
         (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(3,2), border_i=(2,2))
     with pytest.raises(ValueError) as ve:
-        (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(2,7), border_i=(2,2))
+        (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(2,8), border_i=(2,2))
     with pytest.raises(ValueError) as ve:
         (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(2,2), border_i=(3,2))
     with pytest.raises(ValueError) as ve:
-        (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(2,2), border_i=(2,7))
+        (j,i), x_reg = rclv.get_local_region(x, (2,2), border_j=(2,2), border_i=(2,8))
 
+
+def test_get_local_region_periodic():
+    # create some data
+    n = 10
+    x, y = np.meshgrid(np.arange(n), np.arange(n))
+
+    # check behavior for periodic in the i direction
+    periodic=(False, True)
+    _, x_reg = rclv.get_local_region(x, (2, 1), periodic=periodic,
+                                          border_j=(2, 2), border_i=(2, 2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, 0] == -8
+    _, x_reg = rclv.get_local_region(x, (2, 8), periodic=periodic,
+                                          border_j=(2, 2), border_i=(2 ,2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, -1] == 8
+
+    # check behavior for periodic in the j direction
+    periodic=(True, False)
+    _, y_reg = rclv.get_local_region(y, (1, 2), periodic=periodic,
+                                          border_j=(2, 2), border_i=(2,2 ))
+    assert y_reg.shape == (5, 5)
+    assert y_reg[0, 0] == -8
+
+    _, y_reg = rclv.get_local_region(y, (8, 2), periodic=periodic,
+                                          border_j=(2, 2), border_i=(2, 2))
+    assert y_reg.shape == (5, 5)
+    assert y_reg[-1, 0] == 8
+
+    # check behavior for doubly periodic, all four corners
+    periodic = (True, True)
+    # lower left
+    ji = (1, 1)
+    _, y_reg = rclv.get_local_region(y, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    _, x_reg = rclv.get_local_region(x, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, 0] == -8
+    assert y_reg.shape == (5, 5)
+    assert y_reg[0, 0] == -8
+
+    # lower right
+    ji = (1, 8)
+    _, y_reg = rclv.get_local_region(y, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    _, x_reg = rclv.get_local_region(x, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, -1] == 8
+    assert y_reg.shape == (5, 5)
+    assert y_reg[0, 0] == -8
+
+    # upper left
+    ji = (8, 1)
+    _, y_reg = rclv.get_local_region(y, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    _, x_reg = rclv.get_local_region(x, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, 0] == -8
+    assert y_reg.shape == (5, 5)
+    assert y_reg[-1, 0] == 8
+
+    # upper right
+    ji = (8, 8)
+    _, y_reg = rclv.get_local_region(y, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    _, x_reg = rclv.get_local_region(x, ji, periodic=periodic,
+                                              border_j=(2, 2), border_i=(2, 2))
+    assert x_reg.shape == (5, 5)
+    assert x_reg[0, -1] == 8
+    assert y_reg.shape == (5, 5)
+    assert y_reg[-1, 0] == 8
 
 def test_is_contour_closed(square_verts):
     assert rclv.is_contour_closed(square_verts)
@@ -217,3 +291,32 @@ def test_find_convex_contours_projected(sample_data_and_maximum,
     assert tuple(ji_found) == ji
     assert len(con) == 261
     np.testing.assert_allclose(area, 2375686527)
+
+
+def test_find_convex_contours_periodic(sample_data_and_maximum):
+    psi, ji, psi_max = sample_data_and_maximum
+
+    j, i = ji
+    # shift everything left by some amount
+    roll_i = 40
+    data_rolled = np.roll(psi, -roll_i, axis=1)
+    ji_rolled = ji = (50, 45 - roll_i)
+    periodic = (False, True)
+
+    res = list(rclv.find_convex_contours(data_rolled, step=0.001, periodic=periodic))
+
+    # now we get two contours
+    assert len(res) == 2
+
+    ji_found, con, area = res[1]
+    assert tuple(ji_found) == ji_rolled
+    assert len(con) == 261
+    np.testing.assert_allclose(area, 2693.8731123245125)
+
+    # also test the "filling in" function
+    all_cons = [r[1] for r in res]
+    labels = rclv.label_points_in_contours(psi.shape, all_cons)
+    assert labels.max() == 2
+    assert labels.min() == 0
+    assert (labels==1).sum() == 163
+    assert (labels==2).sum() == 2693
