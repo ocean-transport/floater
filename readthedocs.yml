@@ -1,7 +1,7 @@
 conda:
     file: doc/environment.yml
 python:
-   version: 3
+   version: 2
    setup_py_install: true
 # Don't build any extra formats
 formats:
