@@ -245,19 +245,22 @@ def floats_to_netcdf(input_dir, output_fname,
     import dask.dataframe as dd
     import xarray as xr
     from glob import glob
+    from tqdm import tqdm
 
     output_fname = _maybe_add_suffix(output_fname, '_netcdf')
 
-    float_files = glob(float_file_prefix+'.*.csv')
+    match_pattern = float_file_prefix + '.*.csv'
+    float_files = glob(os.path.join(input_dir, match_pattern))
     float_digits = 10
     step_code = len(float_file_prefix) + float_digits + 1
-    float_timesteps = sorted(list({float_file[:step_code] for float_file in float_files}))
+    float_timesteps = set(sorted([int(float_file[-22:-12]) for float_file in float_files]))
 
     float_columns = ['npart', 'time', 'x', 'y', 'z', 'u', 'v', 'vort']
     var_names = float_columns[2:]
 
-    for float_timestep in float_timesteps:
-        input_path = input_dir + float_timestep + '.*.csv'
+    for float_timestep in tqdm(float_timesteps):
+        input_path = os.path.join(input_dir,
+                             '%s.%010d.*.csv' % (float_file_prefix, float_timestep))
         df = dd.read_csv(input_path, names=float_columns, header=None)
         dfc = df.compute()
         dfcs = dfc.sort_values('npart')
@@ -273,8 +276,8 @@ def floats_to_netcdf(input_dir, output_fname,
         var_shape = (1, len(npart))
         data_vars = {var_name: (['time', 'npart'], dfcs[var_name].values.astype(np.float32).reshape(var_shape)) for var_name in var_names}
         ds = xr.Dataset(data_vars, coords={'time': time, 'npart': npart})
-        output_path = output_dir + output_fname + '/'
+        output_path = os.path.join(output_dir, output_fname)
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-        output_nc = output_path + output_prefix + float_timestep[-(float_digits+1):] + '.nc'
+        output_nc = os.path.join(output_path, '%s.%010d.nc' % (output_prefix, float_timestep))
         ds.to_netcdf(output_nc)
