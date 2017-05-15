@@ -19,5 +19,5 @@ setup(name='floater',
       license='MIT',
       packages=['floater'],
       scripts=['scripts/floater_convert'],
-      install_requires=['numpy', 'scipy', 'future', 'scikit-image'],
+      install_requires=['numpy', 'scipy', 'future', 'scikit-image', 'tqdm'],
       zip_safe=False)
