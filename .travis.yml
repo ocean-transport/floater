@@ -16,10 +16,9 @@ env:
     - CONDA_PACKAGES="scipy bcolz pytest future xarray dask scikit-image"
     - PIP_PACKAGES="tqdm codecov pytest-cov tqdm"
   matrix:
-    - NUMPY="numpy"
-    - NUMPY="numpy=1.21.1"
-    - PANDAS="pandas"
-    - PANDAS="pandas=0.19.2"
+    - NUMPY="numpy" PANDAS="pandas
+    - NUMPY="numpy=1.12.1" PANDAS="pandas"
+    - NUMPY="numpy" PANDAS="pandas=0.19.2"
 
 before_install:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
