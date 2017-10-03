@@ -545,7 +545,7 @@ def contour_ji_to_geo(contour_ji, lon, lat):
     dlon = abs(abs(lon[1]) - abs(lon[0]))
     dlat = abs(abs(lat[1]) - abs(lat[0]))
 
-    j,i  = countour_ji.T
+    j,i  = contour_ji.T
 
     x = lon[0] + dlon*i
     y = lat[0] + dlat*j
