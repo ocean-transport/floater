@@ -514,13 +514,21 @@ def label_points_in_contours(shape, contours):
         xmax += roll_x
         xmin += roll_x
 
-        data = np.roll(np.roll(label_data, roll_x, axis=1), roll_y, axis=0)
+	# only roll if necessary
+        if roll_x or roll_y:
+            data = np.roll(np.roll(label_data, roll_x, axis=1), roll_y, axis=0)
+        else:
+            data = label_data
         region_slice = (slice(ymin,ymax), slice(xmin,xmax))
         region_data = data[region_slice]
         data[region_slice] = value*grid_points_in_poly(region_data.shape,
                                                        contour_rel)
 
-        return np.roll(np.roll(data, -roll_x, axis=1), -roll_y, axis=0)
+        if roll_x or roll_y:
+            res = np.roll(np.roll(data, -roll_x, axis=1), -roll_y, axis=0)
+        else:
+            res = data
+        return res
 
     labels = np.zeros(shape, dtype='i4')
     for n, con in enumerate(contours):
