@@ -198,25 +198,19 @@ class FloatSet(object):
 
         # kpart: depth of float release in meters, depth is negative, i.e. -1500
         # for 1500 m
-        #kpart = -0.5 # for 3d float
         kpart = -0.5
 
         # kfloat: target level of float (??)
         kfloat = -0.5
 
         # itop: time of float at the surface (in s)
-
         itop = 0
+        
         # end time of integration of float (in s); note if tend = 1 floats are
         # integrated till the end of the integration;
         tend = -1;
 
-        # initialization
-        #tstart = 259200;
-
         # number of floats
-        # previous way: N = self.Nx * self.Ny
-        # which was was wrong for masked cases
         N = len(lon)
 
         output_dtype = np.dtype(dtype)
@@ -237,20 +231,12 @@ class FloatSet(object):
         # - the number of floats on that tile in the first record
         # - the total number of floats in the sixth record
 
-        # original
-        # flt_matrix[0,0] = N;
-        # flt_matrix[1,0] = -1;
-        # flt_matrix[5,0] = N;
-        # flt_matrix[8,0] = -1;
-
-        # copied from Andreas
         flt_matrix[0,0] = N;
         flt_matrix[0,1] = -1
         flt_matrix[0,4] = -1
         flt_matrix[0,5] = N
         flt_matrix[0,8] = -1
 
-        #fname = os.path.join(output_dir, output_fname)
         return flt_matrix.tofile(filename)
 
     def to_pickle(self, filename='./floatset.pkl'):
