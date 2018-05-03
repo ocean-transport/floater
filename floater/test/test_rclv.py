@@ -222,8 +222,8 @@ def test_convex_contour_around_maximum(sample_data_and_maximum):
     psi, ji, psi_max = sample_data_and_maximum
 
     # step determines how precise the contour identification is
-    step = 0.001
-    con, area = rclv.convex_contour_around_maximum(psi, ji, step)
+    init_step_frac = 0.1
+    con, area = rclv.convex_contour_around_maximum(psi, ji, init_step_frac)
 
     # check against reference solution
     np.testing.assert_allclose(area, 2693.8731123245125)
