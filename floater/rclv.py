@@ -410,9 +410,7 @@ def convex_contour_around_maximum(data, ji, init_contour_step_frac=0.1,
 
 def find_convex_contours(data, min_distance=5, min_area=100.,
                              use_threadpool=False, lon=None, lat=None,
-                             progress=False,
-                             **contour_kwargs,
-                             ):
+                             progress=False, **contour_kwargs):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
