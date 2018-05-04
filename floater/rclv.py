@@ -6,12 +6,10 @@ from skimage.measure import find_contours, points_in_poly, grid_points_in_poly
 from skimage.feature import peak_local_max
 from skimage.morphology import convex_hull_image, watershed
 from scipy.spatial import qhull
-from tqdm import tqdm
 from time import time
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel('DEBUG')
 
 R_earth = 6.371e6
 
@@ -314,6 +312,8 @@ def convex_contour_around_maximum(data, ji, init_contour_step_frac=0.1,
         the scikit image conventions (contour[:,0] are j indices)
     area : float
         The area enclosed by the contour
+    cd : float
+        The actual convexity deficiency of the identified contour
     """
 
     # the maximum
@@ -405,14 +405,14 @@ def convex_contour_around_maximum(data, ji, init_contour_step_frac=0.1,
     if contour is not None:
         contour[:, 0] += (j-border_j[0])
         contour[:, 1] += (i-border_i[0])
-    return contour, region_area
+    return contour, region_area, cd
 
 
 def find_convex_contours(data, min_distance=5, min_area=100.,
-                             max_footprint=10000,
-                             step=1e-7, convex_def=0.001,
                              use_threadpool=False, lon=None, lat=None,
-                             periodic=(False, False)):
+                             progress=False,
+                             **contour_kwargs,
+                             ):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
@@ -421,23 +421,27 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     data : array_like
         The 2D data to contour
     min_distance : int, optional
-        The minimum distance around maxima
+        The minimum distance around maxima (pixel units)
     min_area : float, optional
         The minimum area of the regions (pixels or projected if `lon` and `lat`
         are specified)
-    max_footprint : int, optional
-        The maximum area (in pixels) of the footprint in which to search for
-        contours
-    step : float, optional
-        the step size with which to increment the contour level
-    convex_def : float, optional
-        The maximum convexity deficiency allowed for the contour
-        before the seach stops.
-    use_threadpool : bool, optional
-        Whether to map each maximum using a multiprocessing.ThreadPool
     lon, lat : arraylike
         Longitude and latitude of data points. Should be 1D arrays such that
         ``len(lon) == data.shape[1]`` and ``len(lat) == data.shape[0]``
+    init_contour_step_frac : float
+        the value with which to increment the initial contour level
+        (multiplied by the local maximum value)
+    border: int
+        the initial window around the maximum
+    convex_def : float, optional
+        The target convexity deficiency allowed for the contour.
+    convex_def_tol : float, optional
+        The tolerance for which the convexity deficiency will be sought
+    verbose : bool, optional
+        Whether to print out diagnostic information
+    proj_kwargs : dict, optional
+        Information for projecting the contour into spatial coordinates. Should
+        contain entries `lon0`, `lat0`, `dlon`, and `dlat`.
     periodic : tuple
         Tuple of bools which specificies the periodicity of each axis (j, i) of
         the data
@@ -450,6 +454,8 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     area : float
         The area enclosed by the contour (in pixels or projected if
         `lon` and `lat` are specified)
+    cd : float
+        The actual convexity deficiency of the identified contour
     """
 
     # do some checks on the coordinates if they are specified
@@ -484,27 +490,46 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     def maybe_contour_maximum(ji):
         tic = time()
         result = None
-        if data[tuple(ji)] > step:
-            # only makes sense to look for contours if the value of the maximum
-            # is greater than the contour step size
-            proj_kwargs = {'lon0': lon[ji[1]], 'lat0': lat[ji[0]],
-                               'dlon': dlon, 'dlat': dlat} if proj else None
+        if proj:
+            contour_kwargs['proj_kwargs'] = {'lon0': lon[ji[1]],
+                                             'lat0': lat[ji[0]],
+                                             'dlon': dlon, 'dlat': dlat}
+        else:
+            if 'proj_kwargs' in contour_kwargs:
+                del contour_kwargs['proj_kwargs']
 
-            contour, area = convex_contour_around_maximum(data, ji, step,
-                border=min_distance, convex_def=convex_def,
-                max_footprint=max_footprint, proj_kwargs=proj_kwargs,
-                periodic=periodic)
-            if area and (area >= min_area):
-                result = ji, contour, area
+        contour, area, cd = convex_contour_around_maximum(data, ji,
+                                **contour_kwargs)
+        if area and (area >= min_area):
+            result = ji, contour, area, cd
         toc = time()
         logger.debug("point " + repr(tuple(ji)) + " took %g s" % (toc-tic))
         return result
 
+    if progress:
+        from tqdm import tqdm
+    else:
+        tqdm = _DummyTqdm
     with tqdm(total=len(plm)) as pbar:
         for item in map_function(maybe_contour_maximum, plm):
             pbar.update(1)
             if item is not None:
                 yield item
+
+
+class _DummyTqdm:
+
+    def __init__(*args, **kwargs):
+        pass
+
+    def __enter__(self):
+        class dummy_pbar:
+            def update(self, *args, **kwargs):
+                pass
+        return dummy_pbar
+
+    def __exit__(self, type, value, traceback):
+        pass
 
 
 def label_points_in_contours(shape, contours):
@@ -549,7 +574,7 @@ def label_points_in_contours(shape, contours):
         xmax += roll_x
         xmin += roll_x
 
-	# only roll if necessary
+	    # only roll if necessary
         if roll_x or roll_y:
             data = np.roll(np.roll(label_data, roll_x, axis=1), roll_y, axis=0)
         else:
@@ -593,5 +618,5 @@ def contour_ji_to_geo(contour_ji, lon, lat):
     x = lon[0] + dlon*i
     y = lat[0] + dlat*j
 
-    contour_geo = np.array([x, y]).T
+    contour_geo = np.array([x, y]).transpose()
     return contour_geo
