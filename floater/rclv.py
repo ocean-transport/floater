@@ -524,7 +524,7 @@ class _DummyTqdm:
         class dummy_pbar:
             def update(self, *args, **kwargs):
                 pass
-        return dummy_pbar
+        return dummy_pbar()
 
     def __exit__(self, type, value, traceback):
         pass
