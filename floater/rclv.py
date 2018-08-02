@@ -6,8 +6,10 @@ from skimage.measure import find_contours, points_in_poly, grid_points_in_poly
 from skimage.feature import peak_local_max
 from skimage.morphology import convex_hull_image, watershed
 from scipy.spatial import qhull
-from tqdm import tqdm
 from time import time
+
+import logging
+logger = logging.getLogger(__name__)
 
 R_earth = 6.371e6
 
@@ -34,7 +36,8 @@ def polygon_area(verts):
 
 
 def get_local_region(data, ji, border_j, border_i, periodic=(False, False)):
-    #print("get_local_region " + repr(ji) + repr(border_i) + repr(border_j))
+    logger.debug("get_local_region "
+                 + repr(ji) + repr(border_i) + repr(border_j))
     j, i = ji
     nj, ni = data.shape
     jmin = j - border_j[0]
@@ -231,10 +234,8 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
         if grow_right:
             border_i = (border_i[0], border_i[1] + delta_b)
 
-        # TODO: define a max_area flag to know when to stop growing
-
         # find the local region
-        (j_rel, i_rel), region_data = get_local_region(data, (j,i),
+        (j_rel, i_rel), region_data = get_local_region(data, (j, i),
                                                        border_j, border_i,
                                                        periodic=periodic)
         nj, ni = region_data.shape
@@ -262,20 +263,22 @@ def find_contour_around_maximum(data, ji, level, border_j=(5,5),
             grow_left |= (con[0][1] == 0) or (con[-1][1] == 0)
             grow_right |= (con[0][1] == ni-1) or (con[-1][1] == ni-1)
 
-	# if we got here without growing the region in any direction,
-	# we are probably in a weird situation where there is a closed
-	# contour that does not enclose the maximum
+        # if we got here without growing the region in any direction,
+        # we are probably in a weird situation where there is a closed
+        # contour that does not enclose the maximum
         if target_con is None and not (
-		grow_down or grow_up or grow_left or grow_right):
-            raise ValueError("Couldn't find a contour")
+              grow_down or grow_up or grow_left or grow_right):
+                raise ValueError("Couldn't find a contour")
 
     return target_con, region_data, border_j, border_i
 
 
-def convex_contour_around_maximum(data, ji, step, border=5,
-                                  convex_def=0.01, verbose=False,
+def convex_contour_around_maximum(data, ji, init_contour_step_frac=0.1,
+                                  border=5,
+                                  convex_def=0.01, convex_def_tol=0.001,
                                   max_footprint=None, proj_kwargs=None,
-                                  periodic=(False, False)):
+                                  periodic=(False, False),
+                                  max_iters=1000, min_limit_diff=1e-10):
     """Find the largest convex contour around a maximum.
 
     Parameters
@@ -284,13 +287,15 @@ def convex_contour_around_maximum(data, ji, step, border=5,
         The 2D data to contour
     ji : tuple
         The index of the maximum in (j, i) order
-    step : float
-        the value with which to increment the contour level
+    init_contour_step_frac : float
+        the value with which to increment the initial contour level
+        (multiplied by the local maximum value)
     border: int
         the initial window around the maximum
     convex_def : float, optional
-        The maximum convexity deficiency allowed for the contour
-        before the seach stops.
+        The target convexity deficiency allowed for the contour.
+    convex_def_tol : float, optional
+        The tolerance for which the convexity deficiency will be sought
     verbose : bool, optional
         Whether to print out diagnostic information
     proj_kwargs : dict, optional
@@ -307,6 +312,8 @@ def convex_contour_around_maximum(data, ji, step, border=5,
         the scikit image conventions (contour[:,0] are j indices)
     area : float
         The area enclosed by the contour
+    cd : float
+        The actual convexity deficiency of the identified contour
     """
 
     # the maximum
@@ -315,32 +322,56 @@ def convex_contour_around_maximum(data, ji, step, border=5,
     # the initial search region
     border_j = (border, border)
     border_i = (border, border)
+    max_value = data[tuple(ji)]
 
-    # the test contours
-    # the finer stepsize, the more careful the search
-    # the local region is normalized such that the max is 0
-    contour_levels = np.arange(step, data.max(), step)
+    logger.info("convex_contour_around_maximum " + repr(tuple(ji))
+                + " max_value %g" % max_value)
 
-    contour_prev = None
-    region_area_prev = None
+    init_contour_step_size = max_value * init_contour_step_frac
+    logger.debug("init_contour_step_frac %g" % init_contour_step_frac)
+    logger.debug("init_contour_step_size %g" % init_contour_step_size)
 
-    if verbose:
-        print("convex_contour_around_maximum " + repr(tuple(ji))
-            + " max_value %g" % data[tuple(ji)])
+    lower_lim = 0
+    upper_lim = 2*init_contour_step_size
+    # special logic needed to find the first contour greater than convex_def
+    exceeded = False
+    cd = np.inf
+    contour = None
+    region_area = None
 
-    for level in contour_levels:
-        if verbose:
-            print(('  level: %g border: ' % level) + repr(border_j) + repr(border_i))
+    for n_iter in range(max_iters):
+        logger.debug('iter %g, cd %g' % (n_iter, cd))
+        if abs(cd - convex_def) <= convex_def_tol:
+            logger.debug('cd %g is close to target %g within tolerance %g' %
+                         (cd, convex_def, convex_def_tol))
+            break
 
+        # the new contour level to try
+        logger.debug('current lims: (%10.20f, %10.20f)' % (lower_lim, upper_lim))
+        level = 0.5*(upper_lim + lower_lim)
+
+        if (upper_lim - lower_lim) < min_limit_diff:
+            logger.debug('limit diff below threshold; ending search')
+            break
+
+        logger.debug(('contouring level: %10.20f border: ' % level)
+                     + repr(border_j) + repr(border_i))
         try:
             # try to get a contour
             contour, region_data, border_j, border_i = find_contour_around_maximum(
-                data, (j,i), level, border_j, border_i,
+                data, (j, i), level, border_j, border_i,
                 max_footprint=max_footprint, periodic=periodic)
         except ValueError as ve:
-            if verbose:
-                print(ve)
-            break
+            # we will probably be here if the contour search ended up covering
+            # a too large area. What to do about this depends on whether we
+            # have already found a contour
+            logger.debug(repr(ve))
+            #if contour is None:
+            upper_lim = level
+            exceeded = True
+            continue
+            #else:
+            #    break
 
         # get the convexity deficiency
         if proj_kwargs is None:
@@ -349,33 +380,37 @@ def convex_contour_around_maximum(data, ji, step, border=5,
             contour_proj = project_vertices(contour, **proj_kwargs)
 
         region_area, hull_area, cd = contour_area(contour_proj)
-        if verbose:
-            print('  region_area: % 6.1f, hull_area: % 6.1f, convex_def: % 6.5e'
-                  % (region_area, hull_area, cd))
+        logger.debug('region_area: % 6.1f, hull_area: % 6.1f, convex_def: % 6.5e'
+                     % (region_area, hull_area, cd))
 
-        if cd > convex_def:
-            if verbose:
-                print("  exceeded convexity deficiency, ending loop")
-            break
+        # special logic needed to find the first contour greater than convex_def
+        if not exceeded:
+            if cd < convex_def:
+                # need to keep upper_lim until we exceed the convex def
+                lower_lim = level
+                upper_lim = level + 2*init_contour_step_size
+                logger.debug('still searching for upper_lim, new lims '
+                             '(%g, %g)' % (lower_lim, upper_lim))
+            else:
+                exceeded = True
         else:
-            # keep going
-            # re-center the previous contour to be referenced to the
-            # absolute position
-            if verbose:
-                print("  moving on to next contour level, region_data.shape: " +
-                        repr(region_data.shape))
-            contour[:, 0] += (j-border_j[0])
-            contour[:, 1] += (i-border_i[0])
-            contour_prev, region_area_prev = contour, region_area
+            # from here we can assume that the target contour lies between
+            # lower_lim and_upper_lim
+            if cd < convex_def:
+                lower_lim = level
+            else:
+                upper_lim = level
 
-    return contour_prev, region_area_prev
+    # now we should have a contour to return
+    if contour is not None:
+        contour[:, 0] += (j-border_j[0])
+        contour[:, 1] += (i-border_i[0])
+    return contour, region_area, cd
 
 
 def find_convex_contours(data, min_distance=5, min_area=100.,
-                             max_footprint=10000,
-                             step=1e-7, convex_def=0.001, verbose=False,
                              use_threadpool=False, lon=None, lat=None,
-                             periodic=(False, False)):
+                             progress=False, **contour_kwargs):
     """Find the outermost convex contours around the maxima of
     data with specified convexity deficiency.
 
@@ -384,25 +419,27 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     data : array_like
         The 2D data to contour
     min_distance : int, optional
-        The minimum distance around maxima
+        The minimum distance around maxima (pixel units)
     min_area : float, optional
         The minimum area of the regions (pixels or projected if `lon` and `lat`
         are specified)
-    max_footprint : int, optional
-        The maximum area (in pixels) of the footprint in which to search for
-        contours
-    step : float, optional
-        the step size with which to increment the contour level
-    convex_def : float, optional
-        The maximum convexity deficiency allowed for the contour
-        before the seach stops.
-    verbose : bool, optional
-        Whether to print out diagnostic information
-    use_threadpool : bool, optional
-        Whether to map each maximum using a multiprocessing.ThreadPool
     lon, lat : arraylike
         Longitude and latitude of data points. Should be 1D arrays such that
         ``len(lon) == data.shape[1]`` and ``len(lat) == data.shape[0]``
+    init_contour_step_frac : float
+        the value with which to increment the initial contour level
+        (multiplied by the local maximum value)
+    border: int
+        the initial window around the maximum
+    convex_def : float, optional
+        The target convexity deficiency allowed for the contour.
+    convex_def_tol : float, optional
+        The tolerance for which the convexity deficiency will be sought
+    verbose : bool, optional
+        Whether to print out diagnostic information
+    proj_kwargs : dict, optional
+        Information for projecting the contour into spatial coordinates. Should
+        contain entries `lon0`, `lat0`, `dlon`, and `dlat`.
     periodic : tuple
         Tuple of bools which specificies the periodicity of each axis (j, i) of
         the data
@@ -415,6 +452,8 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     area : float
         The area enclosed by the contour (in pixels or projected if
         `lon` and `lat` are specified)
+    cd : float
+        The actual convexity deficiency of the identified contour
     """
 
     # do some checks on the coordinates if they are specified
@@ -449,27 +488,46 @@ def find_convex_contours(data, min_distance=5, min_area=100.,
     def maybe_contour_maximum(ji):
         tic = time()
         result = None
-        if data[tuple(ji)] > step:
-            # only makes sense to look for contours if the value of the maximum
-            # is greater than the contour step size
-            proj_kwargs = {'lon0': lon[ji[1]], 'lat0': lat[ji[0]],
-                               'dlon': dlon, 'dlat': dlat} if proj else None
+        if proj:
+            contour_kwargs['proj_kwargs'] = {'lon0': lon[ji[1]],
+                                             'lat0': lat[ji[0]],
+                                             'dlon': dlon, 'dlat': dlat}
+        else:
+            if 'proj_kwargs' in contour_kwargs:
+                del contour_kwargs['proj_kwargs']
 
-            contour, area = convex_contour_around_maximum(data, ji, step,
-                border=min_distance, convex_def=convex_def, verbose=verbose,
-                max_footprint=max_footprint, proj_kwargs=proj_kwargs,
-                periodic=periodic)
-            if area and (area >= min_area):
-                result = ji, contour, area
+        contour, area, cd = convex_contour_around_maximum(data, ji,
+                                **contour_kwargs)
+        if area and (area >= min_area):
+            result = ji, contour, area, cd
         toc = time()
-        #print("point " + repr(tuple(ji)) + " took %g s" % (toc-tic))
+        logger.debug("point " + repr(tuple(ji)) + " took %g s" % (toc-tic))
         return result
 
+    if progress:
+        from tqdm import tqdm
+    else:
+        tqdm = _DummyTqdm
     with tqdm(total=len(plm)) as pbar:
         for item in map_function(maybe_contour_maximum, plm):
             pbar.update(1)
             if item is not None:
                 yield item
+
+
+class _DummyTqdm:
+
+    def __init__(*args, **kwargs):
+        pass
+
+    def __enter__(self):
+        class dummy_pbar:
+            def update(self, *args, **kwargs):
+                pass
+        return dummy_pbar()
+
+    def __exit__(self, type, value, traceback):
+        pass
 
 
 def label_points_in_contours(shape, contours):
@@ -514,7 +572,7 @@ def label_points_in_contours(shape, contours):
         xmax += roll_x
         xmin += roll_x
 
-	# only roll if necessary
+	    # only roll if necessary
         if roll_x or roll_y:
             data = np.roll(np.roll(label_data, roll_x, axis=1), roll_y, axis=0)
         else:
@@ -558,5 +616,5 @@ def contour_ji_to_geo(contour_ji, lon, lat):
     x = lon[0] + dlon*i
     y = lat[0] + dlat*j
 
-    contour_geo = np.array([x, y]).T
+    contour_geo = np.array([x, y]).transpose()
     return contour_geo

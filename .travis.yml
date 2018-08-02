@@ -17,8 +17,9 @@ env:
     - PIP_PACKAGES="tqdm codecov pytest-cov tqdm"
   matrix:
     - NUMPY="numpy" PANDAS="pandas"
-    - NUMPY="numpy=1.12.1" PANDAS="pandas"
-    - NUMPY="numpy" PANDAS="pandas=0.19.2"
+## we don't need to keep testing these old environments
+#    - NUMPY="numpy=1.12.1" PANDAS="pandas"
+#    - NUMPY="numpy" PANDAS="pandas=0.19.2"
 
 before_install:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
